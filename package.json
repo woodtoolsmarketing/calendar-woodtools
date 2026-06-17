@@ -1,0 +1,34 @@
+{
+  "name": "calendario-interactive",
+  "version": "1.0.0",
+  "description": "Calendario interactivo de tareas y programación de contenido para WoodTools",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win"
+  },
+  "author": "WoodTools",
+  "license": "MIT",
+  "build": {
+    "appId": "com.woodtools.calendario",
+    "productName": "Calendario WoodTools",
+    "files": [
+      "main.js",
+      "preload.js",
+      "store.js",
+      "recurrence.js",
+      "alert.html",
+      "src/**/*",
+      "node_modules/fullcalendar/**/*"
+    ],
+    "win": {
+      "target": "nsis"
+    }
+  },
+  "devDependencies": {
+    "electron": "^42.4.0"
+  },
+  "dependencies": {
+    "fullcalendar": "^6.1.20"
+  }
+}

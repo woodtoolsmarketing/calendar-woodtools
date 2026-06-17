@@ -1,0 +1,17 @@
+# Dependencias (se regeneran con: npm install)
+node_modules/
+
+# Builds / instaladores
+dist/
+out/
+build/
+
+# Logs y datos locales
+*.log
+electron-test*.log
+connections.dat
+calendario-data.json
+
+# Sistema
+.DS_Store
+Thumbs.db

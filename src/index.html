@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Calendario WoodTools</title>
+  <link rel="stylesheet" href="styles.css" />
+  <!-- FullCalendar (bundle global, queda offline tras npm install) -->
+  <script src="../node_modules/fullcalendar/index.global.min.js"></script>
+</head>
+<body>
+  <div class="app">
+    <!-- ===================== SIDEBAR ===================== -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-logo">WT</div>
+        <div>
+          <div class="brand-title">Calendario</div>
+          <div class="brand-sub">WoodTools</div>
+        </div>
+      </div>
+
+      <button id="btnNew" class="btn-primary">+ Nueva tarea</button>
+      <button id="btnConnections" class="btn-ghost">⚙ Conexiones (redes)</button>
+
+      <div class="legend">
+        <div class="legend-title">Importancia</div>
+        <div class="legend-item" data-imp="TRASCENDENTAL">
+          <span class="dot" style="background:#E84A6F"></span>
+          <div>
+            <strong>Trascendental</strong>
+            <small>Ventana emergente que pausa todo</small>
+          </div>
+        </div>
+        <div class="legend-item" data-imp="IMPORTANTE">
+          <span class="dot" style="background:#2EC4B6"></span>
+          <div>
+            <strong>Importante</strong>
+            <small>Notificación de Windows</small>
+          </div>
+        </div>
+        <div class="legend-item" data-imp="PRESCINDIBLE">
+          <span class="dot" style="background:#B87333"></span>
+          <div>
+            <strong>Prescindible</strong>
+            <small>Sólo dentro del programa</small>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="tabs">
+          <button class="tab active" data-tab="pendientes">Pendientes</button>
+          <button class="tab" data-tab="realizadas">Realizadas</button>
+        </div>
+        <div id="listPendientes" class="task-list"></div>
+        <div id="listRealizadas" class="task-list" hidden></div>
+      </div>
+
+      <div class="footer-note">Se queda en la bandeja del sistema para avisarte aunque cierres la ventana.</div>
+    </aside>
+
+    <!-- ===================== CALENDARIO ===================== -->
+    <main class="main">
+      <div id="calendar"></div>
+    </main>
+  </div>
+
+  <!-- ===================== MODAL FORMULARIO ===================== -->
+  <div id="modal" class="modal-backdrop" hidden>
+    <div class="modal">
+      <div class="modal-head">
+        <h2 id="modalTitle">Nueva tarea</h2>
+        <button id="modalClose" class="icon-btn">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Repetir tarea (plantillas guardadas) -->
+        <div class="field repeat-field">
+          <label>Repetir tarea guardada</label>
+          <div class="repeat-row">
+            <select id="fTemplate">
+              <option value="">— Tarea nueva —</option>
+            </select>
+            <button id="btnDeleteTemplate" class="btn-ghost" title="Borrar plantilla seleccionada">🗑</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Nombre de la tarea *</label>
+          <input id="fTitle" type="text" placeholder="Ej: Grabar reel del torno nuevo" autocomplete="off" />
+        </div>
+
+        <div class="field">
+          <label>Importancia</label>
+          <div class="imp-options">
+            <label class="imp-pill" data-imp="TRASCENDENTAL">
+              <input type="radio" name="imp" value="TRASCENDENTAL" />
+              <span class="swatch" style="background:#E84A6F"></span> Trascendental
+            </label>
+            <label class="imp-pill" data-imp="IMPORTANTE">
+              <input type="radio" name="imp" value="IMPORTANTE" checked />
+              <span class="swatch" style="background:#2EC4B6"></span> Importante
+            </label>
+            <label class="imp-pill" data-imp="PRESCINDIBLE">
+              <input type="radio" name="imp" value="PRESCINDIBLE" />
+              <span class="swatch" style="background:#B87333"></span> Prescindible
+            </label>
+          </div>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label>Fecha</label>
+            <input id="fDate" type="date" />
+          </div>
+          <div class="field">
+            <label>Hora inicio</label>
+            <input id="fStart" type="time" />
+          </div>
+          <div class="field">
+            <label>Hora fin</label>
+            <input id="fEnd" type="time" />
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Repetición</label>
+          <select id="fRecur">
+            <option value="none">No se repite</option>
+            <option value="daily">Todos los días</option>
+            <option value="weekly">Cada semana (mismo día)</option>
+            <option value="monthly">Cada mes (mismo número)</option>
+          </select>
+        </div>
+
+        <!-- Tipo: tarea / contenido -->
+        <div class="field">
+          <label>Tipo</label>
+          <div class="type-toggle">
+            <label><input type="radio" name="ftype" value="task" checked /> Tarea común</label>
+            <label><input type="radio" name="ftype" value="content" /> Contenido de redes</label>
+          </div>
+        </div>
+
+        <!-- Bloque de contenido (se muestra si tipo = content) -->
+        <div id="contentBlock" class="content-block" hidden>
+          <div class="field">
+            <label>Plataformas</label>
+            <div class="chips">
+              <label class="chip"><input type="checkbox" name="plat" value="Instagram" /> Instagram</label>
+              <label class="chip"><input type="checkbox" name="plat" value="Facebook" /> Facebook</label>
+              <label class="chip"><input type="checkbox" name="plat" value="Threads" /> Threads</label>
+              <label class="chip"><input type="checkbox" name="plat" value="TikTok" /> TikTok</label>
+              <label class="chip"><input type="checkbox" name="plat" value="YouTube" /> YouTube</label>
+            </div>
+          </div>
+          <div class="field">
+            <label>Formato de contenido</label>
+            <select id="fContentType">
+              <option value="Historia">Historia</option>
+              <option value="Reel">Reel</option>
+              <option value="Post foto">Publicación de foto</option>
+              <option value="Post video">Publicación de video</option>
+              <option value="Video">Video (YouTube)</option>
+              <option value="Short">Short (YouTube)</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label>¿Qué hago con esto?</label>
+            <div class="type-toggle">
+              <label><input type="radio" name="pubmode" value="reminder" checked /> Recordarme y lo subo yo</label>
+              <label><input type="radio" name="pubmode" value="auto" /> Publicar automático</label>
+            </div>
+          </div>
+
+          <div id="autoFields" hidden>
+            <div class="field">
+              <label>URL pública del archivo (imagen o video)</label>
+              <input id="fMediaUrl" type="url" placeholder="https://.../reel.mp4" autocomplete="off" />
+              <small class="hint">Instagram exige que el archivo esté en una URL pública (tu web, o Drive/Dropbox con enlace directo).</small>
+            </div>
+            <div class="field">
+              <label>Texto / Epígrafe de la publicación</label>
+              <textarea id="fCaption" rows="2" placeholder="Lo que va como descripción del post"></textarea>
+            </div>
+            <div class="field">
+              <label>Link (para publicaciones de Facebook)</label>
+              <input id="fLink" type="url" placeholder="https://woodtools..." autocomplete="off" />
+            </div>
+          </div>
+
+          <label class="check-line">
+            <input type="checkbox" id="fStoryLink" />
+            <span>Al subir esto, recordarme (Trascendental) subir una <strong>historia con link</strong></span>
+          </label>
+          <div class="field" id="storyLinkWrap" hidden>
+            <label>¿Cuánto después avisar para la historia?</label>
+            <select id="fStoryDelay">
+              <option value="0">Al mismo tiempo</option>
+              <option value="15">15 minutos después</option>
+              <option value="30" selected>30 minutos después</option>
+              <option value="60">1 hora después</option>
+              <option value="120">2 horas después</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Notas</label>
+          <textarea id="fNotes" rows="2" placeholder="Detalles, guion, link, etc."></textarea>
+        </div>
+
+        <label class="check-line">
+          <input type="checkbox" id="fSaveTemplate" />
+          <span>Guardar como plantilla para repetir luego</span>
+        </label>
+      </div>
+
+      <div class="modal-foot">
+        <button id="btnDelete" class="btn-danger" hidden>Eliminar</button>
+        <button id="btnReschedule" class="btn-ghost" hidden>Reprogramar</button>
+        <div class="spacer"></div>
+        <button id="btnPublishNow" class="btn-ghost" hidden>📤 Publicar ahora</button>
+        <button id="btnDone" class="btn-ok" hidden>✓ Marcar hecha</button>
+        <button id="btnSave" class="btn-primary">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== MODAL CONEXIONES ===================== -->
+  <div id="connModal" class="modal-backdrop" hidden>
+    <div class="modal">
+      <div class="modal-head">
+        <h2>Conexiones de redes</h2>
+        <button id="connClose" class="icon-btn">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="conn-section">
+          <div class="conn-title">
+            <span>📘 Meta — Facebook + Instagram</span>
+            <span id="metaStatus" class="conn-badge">Sin conectar</span>
+          </div>
+          <p class="hint">Pegá los datos de tu app de Meta. Te dejé el paso a paso en <code>GUIA-META.md</code>. Para tus propias cuentas no hace falta la revisión de semanas.</p>
+          <div class="field">
+            <label>App ID</label>
+            <input id="mAppId" type="text" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label>App Secret</label>
+            <input id="mAppSecret" type="password" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label>ID de la Página de Facebook</label>
+            <input id="mPageId" type="text" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label>Token de la Página (larga duración)</label>
+            <textarea id="mPageToken" rows="2" autocomplete="off"></textarea>
+          </div>
+          <div class="field">
+            <label>ID de la cuenta de Instagram (Business)</label>
+            <input id="mIgUserId" type="text" autocomplete="off" />
+          </div>
+          <div id="connResult" class="conn-result"></div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button id="btnTestMeta" class="btn-ghost">Probar conexión</button>
+        <div class="spacer"></div>
+        <button id="btnSaveMeta" class="btn-primary">Guardar conexión</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="../recurrence.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>

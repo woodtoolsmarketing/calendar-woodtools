@@ -1,0 +1,574 @@
+/* renderer.js — Lógica del calendario WoodTools */
+
+const IMPORTANCE = {
+  TRASCENDENTAL: { label: 'Trascendental', color: '#E84A6F' },
+  IMPORTANTE: { label: 'Importante', color: '#2EC4B6' },
+  PRESCINDIBLE: { label: 'Prescindible', color: '#B87333' },
+};
+
+let state = { tasks: [], templates: [] };
+let calendar = null;
+let editing = null;        // tarea en edición (o null si es nueva)
+let editingOccKey = null;  // ocurrencia puntual seleccionada
+
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+
+function uid() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+
+// --------------------------------------------------------------------------
+// Carga inicial
+// --------------------------------------------------------------------------
+async function load() {
+  state = await window.api.getData();
+  refreshTemplatesSelect();
+  renderLists();
+  if (calendar) calendar.refetchEvents();
+}
+
+window.api.onDataChanged(() => load());
+
+// --------------------------------------------------------------------------
+// Calendario (FullCalendar)
+// --------------------------------------------------------------------------
+function initCalendar() {
+  const el = $('#calendar');
+  calendar = new FullCalendar.Calendar(el, {
+    initialView: 'dayGridMonth',
+    locale: 'es',
+    firstDay: 1,
+    height: '100%',
+    nowIndicator: true,
+    scrollTime: '08:00:00',
+    selectable: true,
+    selectMirror: true,
+    editable: true,
+    dayMaxEvents: 3,
+    headerToolbar: {
+      left: 'prev,next today',
+      center: 'title',
+      right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek',
+    },
+    buttonText: { today: 'Hoy', month: 'Mes', week: 'Semana', day: 'Día', list: 'Lista' },
+    events: provideEvents,
+    dateClick: (info) => openForm({ date: info.date, allDay: info.allDay }),
+    select: (info) => openForm({ date: info.start, end: info.end, allDay: info.allDay }),
+    eventClick: (info) => {
+      const { taskId, occKey } = info.event.extendedProps;
+      const task = state.tasks.find((t) => t.id === taskId);
+      if (task) openForm({ task, occKey });
+    },
+    eventDrop: (info) => applyDrag(info),
+    eventResize: (info) => applyResize(info),
+  });
+  calendar.render();
+}
+
+// Expande tareas (incluyendo recurrentes) en eventos del rango visible
+function provideEvents(fetchInfo, success) {
+  const events = [];
+  for (const task of state.tasks) {
+    const instances = Recurrence.expandTask(task, fetchInfo.start, fetchInfo.end);
+    for (const inst of instances) {
+      const conf = IMPORTANCE[task.importance] || IMPORTANCE.PRESCINDIBLE;
+      events.push({
+        id: task.id + '::' + inst.occKey,
+        title: (task.type === 'content' ? '📲 ' : '') + task.title,
+        start: inst.start,
+        end: inst.end,
+        backgroundColor: conf.color,
+        borderColor: conf.color,
+        textColor: '#fff',
+        classNames: inst.done ? ['is-done'] : [],
+        extendedProps: { taskId: task.id, occKey: inst.occKey, importance: task.importance },
+      });
+    }
+  }
+  success(events);
+}
+
+function applyDrag(info) {
+  const task = state.tasks.find((t) => t.id === info.event.extendedProps.taskId);
+  if (!task) return;
+  const ms = deltaMs(info.delta); // desplazamiento aplicado al arrastrar
+  task.start = new Date(new Date(task.start).getTime() + ms).toISOString();
+  if (task.end) task.end = new Date(new Date(task.end).getTime() + ms).toISOString();
+  task.firedKeys = [];
+  window.api.saveTask(task).then(() => load());
+}
+
+function applyResize(info) {
+  const task = state.tasks.find((t) => t.id === info.event.extendedProps.taskId);
+  if (!task) return;
+  task.end = info.event.end.toISOString();
+  window.api.saveTask(task).then(() => load());
+}
+
+function deltaMs(delta) {
+  return (delta.years || 0) * 0 + (delta.months || 0) * 0 +
+    (delta.days || 0) * 86400000 + (delta.milliseconds || 0);
+}
+
+// --------------------------------------------------------------------------
+// Formulario / Modal
+// --------------------------------------------------------------------------
+function openForm({ date, end, task = null, occKey = null }) {
+  editing = task;
+  editingOccKey = occKey;
+
+  $('#modalTitle').textContent = task ? 'Editar tarea' : 'Nueva tarea';
+  $('#fTemplate').value = '';
+
+  if (task) {
+    const occStart = occKey ? occKeyToDate(occKey, task) : new Date(task.start);
+    $('#fTitle').value = task.title || '';
+    setRadio('imp', task.importance || 'IMPORTANTE');
+    $('#fDate').value = toDateInput(occStart);
+    $('#fStart').value = toTimeInput(occStart);
+    $('#fEnd').value = toTimeInput(new Date(occStart.getTime() + Recurrence.durationMs(task)));
+    $('#fRecur').value = (task.recurrence && task.recurrence.freq) || 'none';
+    $('#fNotes').value = task.notes || '';
+    setRadio('ftype', task.type || 'task');
+    // contenido
+    $$('input[name="plat"]').forEach((c) => { c.checked = (task.platforms || []).includes(c.value); });
+    $('#fContentType').value = task.contentType || 'Historia';
+    setRadio('pubmode', task.publishMode || 'reminder');
+    $('#fMediaUrl').value = task.mediaUrl || '';
+    $('#fCaption').value = task.caption || '';
+    $('#fLink').value = task.link || '';
+    $('#fStoryLink').checked = false;
+    $('#fSaveTemplate').checked = false;
+  } else {
+    const d = date ? new Date(date) : new Date();
+    if (!date) { d.setMinutes(d.getMinutes() < 30 ? 30 : 60, 0, 0); }
+    $('#fTitle').value = '';
+    setRadio('imp', 'IMPORTANTE');
+    $('#fDate').value = toDateInput(d);
+    $('#fStart').value = toTimeInput(d);
+    const e = end ? new Date(end) : new Date(d.getTime() + 30 * 60000);
+    $('#fEnd').value = toTimeInput(e);
+    $('#fRecur').value = 'none';
+    $('#fNotes').value = '';
+    setRadio('ftype', 'task');
+    $$('input[name="plat"]').forEach((c) => (c.checked = false));
+    $('#fContentType').value = 'Historia';
+    setRadio('pubmode', 'reminder');
+    $('#fMediaUrl').value = '';
+    $('#fCaption').value = '';
+    $('#fLink').value = '';
+    $('#fStoryLink').checked = false;
+    $('#fSaveTemplate').checked = false;
+  }
+
+  syncContentBlock();
+  syncStoryLink();
+  syncAutoFields();
+  $('#btnDelete').hidden = !task;
+  $('#btnDone').hidden = !task;
+  $('#btnReschedule').hidden = !task;
+  $('#modal').hidden = false;
+  setTimeout(() => $('#fTitle').focus(), 50);
+}
+
+function closeForm() {
+  $('#modal').hidden = true;
+  editing = null;
+  editingOccKey = null;
+}
+
+function readForm() {
+  const date = $('#fDate').value;
+  const start = $('#fStart').value || '09:00';
+  const end = $('#fEnd').value || '';
+  const startDate = combine(date, start);
+  let endDate = end ? combine(date, end) : new Date(startDate.getTime() + 30 * 60000);
+  if (endDate <= startDate) endDate = new Date(startDate.getTime() + 30 * 60000);
+
+  const type = getRadio('ftype');
+  const task = editing ? { ...editing } : { id: uid(), firedKeys: [], doneOccurrences: [], status: 'pending' };
+  task.title = $('#fTitle').value.trim();
+  task.importance = getRadio('imp');
+  task.start = startDate.toISOString();
+  task.end = endDate.toISOString();
+  task.notes = $('#fNotes').value.trim();
+  task.type = type;
+  const freq = $('#fRecur').value;
+  task.recurrence = freq === 'none' ? null : { freq };
+
+  if (type === 'content') {
+    task.platforms = $$('input[name="plat"]:checked').map((c) => c.value);
+    task.contentType = $('#fContentType').value;
+    task.publishMode = getRadio('pubmode');
+    task.mediaUrl = $('#fMediaUrl').value.trim();
+    task.caption = $('#fCaption').value.trim();
+    task.link = $('#fLink').value.trim();
+  } else {
+    delete task.platforms;
+    delete task.contentType;
+    delete task.publishMode;
+    delete task.mediaUrl;
+    delete task.caption;
+    delete task.link;
+  }
+  // Reprogramar limpia los disparos previos
+  task.firedKeys = [];
+  return task;
+}
+
+async function saveForm() {
+  const task = readForm();
+  if (!task.title) { $('#fTitle').focus(); $('#fTitle').style.outline = '2px solid #E84A6F'; return; }
+  $('#fTitle').style.outline = '';
+
+  await window.api.saveTask(task);
+
+  // Guardar como plantilla
+  if ($('#fSaveTemplate').checked) {
+    const tpl = {
+      id: uid(),
+      title: task.title,
+      importance: task.importance,
+      notes: task.notes,
+      type: task.type,
+      platforms: task.platforms || [],
+      contentType: task.contentType || '',
+      durationMin: Math.round((new Date(task.end) - new Date(task.start)) / 60000),
+    };
+    await window.api.saveTemplate(tpl);
+  }
+
+  // Recordatorio Trascendental para historia con link
+  if (task.type === 'content' && $('#fStoryLink').checked) {
+    const delay = parseInt($('#fStoryDelay').value, 10) || 0;
+    const storyStart = new Date(new Date(task.start).getTime() + delay * 60000);
+    const story = {
+      id: uid(),
+      title: 'Subir HISTORIA con link — ' + task.title,
+      importance: 'TRASCENDENTAL',
+      start: storyStart.toISOString(),
+      end: new Date(storyStart.getTime() + 15 * 60000).toISOString(),
+      notes: 'Recordatorio para subir una historia con link desde tu cuenta.\nRelacionado a: ' + task.title,
+      type: 'content',
+      platforms: task.platforms || [],
+      contentType: 'Historia',
+      recurrence: null,
+      status: 'pending',
+      firedKeys: [],
+      doneOccurrences: [],
+      linkedFrom: task.id,
+    };
+    await window.api.saveTask(story);
+  }
+
+  closeForm();
+  await load();
+}
+
+async function deleteTask() {
+  if (!editing) return;
+  await window.api.deleteTask(editing.id);
+  closeForm();
+  await load();
+}
+
+async function markDone() {
+  if (!editing) return;
+  const task = { ...editing };
+  if (task.recurrence && task.recurrence.freq && task.recurrence.freq !== 'none') {
+    task.doneOccurrences = task.doneOccurrences || [];
+    const key = editingOccKey || Recurrence.dayKey(new Date(task.start));
+    if (!task.doneOccurrences.includes(key)) task.doneOccurrences.push(key);
+  } else {
+    task.status = task.status === 'done' ? 'pending' : 'done';
+  }
+  await window.api.saveTask(task);
+  closeForm();
+  await load();
+}
+
+function reschedule() {
+  // Quita el "hecha" de esta ocurrencia y deja editar la fecha para reprogramar
+  if (!editing) return;
+  if (editing.recurrence && editing.recurrence.freq && editing.recurrence.freq !== 'none') {
+    const key = editingOccKey;
+    editing.doneOccurrences = (editing.doneOccurrences || []).filter((k) => k !== key);
+  } else {
+    editing.status = 'pending';
+  }
+  $('#fDate').focus();
+  $('#fDate').style.outline = '2px solid #4c8bf5';
+  setTimeout(() => ($('#fDate').style.outline = ''), 1500);
+}
+
+// --------------------------------------------------------------------------
+// Plantillas ("Repetir tarea")
+// --------------------------------------------------------------------------
+function refreshTemplatesSelect() {
+  const sel = $('#fTemplate');
+  sel.innerHTML = '<option value="">— Tarea nueva —</option>';
+  state.templates.forEach((t) => {
+    const o = document.createElement('option');
+    o.value = t.id;
+    o.textContent = t.title + ' (' + (IMPORTANCE[t.importance]?.label || '') + ')';
+    sel.appendChild(o);
+  });
+}
+
+function applyTemplate(id) {
+  const tpl = state.templates.find((t) => t.id === id);
+  if (!tpl) return;
+  $('#fTitle').value = tpl.title;
+  setRadio('imp', tpl.importance);
+  $('#fNotes').value = tpl.notes || '';
+  setRadio('ftype', tpl.type || 'task');
+  $$('input[name="plat"]').forEach((c) => { c.checked = (tpl.platforms || []).includes(c.value); });
+  if (tpl.contentType) $('#fContentType').value = tpl.contentType;
+  // ajustar hora fin según duración guardada
+  if (tpl.durationMin) {
+    const startDate = combine($('#fDate').value, $('#fStart').value || '09:00');
+    $('#fEnd').value = toTimeInput(new Date(startDate.getTime() + tpl.durationMin * 60000));
+  }
+  syncContentBlock();
+}
+
+async function deleteTemplate() {
+  const id = $('#fTemplate').value;
+  if (!id) return;
+  await window.api.deleteTemplate(id);
+  state = await window.api.getData();
+  refreshTemplatesSelect();
+}
+
+// --------------------------------------------------------------------------
+// Listas laterales (pendientes / realizadas)
+// --------------------------------------------------------------------------
+function renderLists() {
+  const pend = $('#listPendientes');
+  const done = $('#listRealizadas');
+  pend.innerHTML = '';
+  done.innerHTML = '';
+
+  const now = new Date();
+  const horizonStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const horizonEnd = new Date(horizonStart.getTime() + 30 * 86400000);
+
+  const pendItems = [];
+  const doneItems = [];
+
+  for (const task of state.tasks) {
+    const instances = Recurrence.expandTask(task, horizonStart, horizonEnd);
+    for (const inst of instances) {
+      const item = { task, inst };
+      if (inst.done) doneItems.push(item);
+      else pendItems.push(item);
+    }
+  }
+  pendItems.sort((a, b) => a.inst.start - b.inst.start);
+  doneItems.sort((a, b) => b.inst.start - a.inst.start);
+
+  if (!pendItems.length) pend.innerHTML = '<div class="empty-hint">No hay tareas pendientes en los próximos 30 días.</div>';
+  if (!doneItems.length) done.innerHTML = '<div class="empty-hint">Todavía no marcaste tareas como hechas.</div>';
+
+  pendItems.forEach(({ task, inst }) => pend.appendChild(taskCard(task, inst, false)));
+  doneItems.slice(0, 60).forEach(({ task, inst }) => done.appendChild(taskCard(task, inst, true)));
+}
+
+function taskCard(task, inst, isDone) {
+  const conf = IMPORTANCE[task.importance] || IMPORTANCE.PRESCINDIBLE;
+  const card = document.createElement('div');
+  card.className = 'task-card' + (isDone ? ' done' : '');
+  card.style.borderLeftColor = conf.color;
+
+  const when = inst.start.toLocaleString('es-AR', {
+    weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+  });
+
+  const tags = [`<span class="tc-tag">${conf.label}</span>`];
+  if (task.type === 'content') {
+    const plats = (task.platforms || []).join(', ');
+    tags.push(`<span class="tc-tag">📲 ${task.contentType || ''}</span>`);
+    if (plats) tags.push(`<span class="tc-tag">${plats}</span>`);
+    if (task.publishMode === 'auto') tags.push('<span class="tc-tag">🤖 Auto</span>');
+  }
+  if (task.recurrence && task.recurrence.freq) tags.push('<span class="tc-tag">🔁</span>');
+
+  card.innerHTML = `
+    <div class="tc-title">${escapeHtml(task.title)}</div>
+    <div class="tc-meta"><span>${when}</span></div>
+    <div class="tc-meta">${tags.join('')}</div>`;
+  card.onclick = () => openForm({ task, occKey: inst.occKey });
+  return card;
+}
+
+// --------------------------------------------------------------------------
+// Utilidades fecha / forms
+// --------------------------------------------------------------------------
+function pad(n) { return String(n).padStart(2, '0'); }
+function toDateInput(d) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
+function toTimeInput(d) { return `${pad(d.getHours())}:${pad(d.getMinutes())}`; }
+function combine(dateStr, timeStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const [hh, mm] = timeStr.split(':').map(Number);
+  return new Date(y, m - 1, d, hh, mm, 0, 0);
+}
+function occKeyToDate(occKey, task) {
+  const [y, m, d] = occKey.split('-').map(Number);
+  const base = new Date(task.start);
+  return new Date(y, m - 1, d, base.getHours(), base.getMinutes(), 0, 0);
+}
+function setRadio(name, value) {
+  const el = document.querySelector(`input[name="${name}"][value="${value}"]`);
+  if (el) el.checked = true;
+}
+function getRadio(name) {
+  const el = document.querySelector(`input[name="${name}"]:checked`);
+  return el ? el.value : '';
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function syncContentBlock() {
+  $('#contentBlock').hidden = getRadio('ftype') !== 'content';
+}
+function syncStoryLink() {
+  $('#storyLinkWrap').hidden = !$('#fStoryLink').checked;
+}
+function syncAutoFields() {
+  const auto = getRadio('ftype') === 'content' && getRadio('pubmode') === 'auto';
+  $('#autoFields').hidden = !auto;
+  $('#btnPublishNow').hidden = !(auto && editing);
+}
+
+// --------------------------------------------------------------------------
+// Publicar ahora (manual)
+// --------------------------------------------------------------------------
+async function publishNow() {
+  if (!editing) return;
+  const task = readForm();
+  if (!task.title) { $('#fTitle').focus(); return; }
+  const btn = $('#btnPublishNow');
+  btn.disabled = true;
+  btn.textContent = 'Publicando…';
+  await window.api.saveTask(task);
+  const results = await window.api.publishNow(task);
+  btn.disabled = false;
+  btn.textContent = '📤 Publicar ahora';
+  const failed = results.filter((r) => r.error);
+  if (failed.length) {
+    alert('No se pudo publicar:\n' + results.map((r) => (r.platform ? r.platform + ': ' : '') + (r.error || 'OK')).join('\n'));
+  } else {
+    alert('¡Publicado en ' + results.map((r) => r.platform).join(', ') + '!');
+    closeForm();
+  }
+  await load();
+}
+
+// --------------------------------------------------------------------------
+// Conexiones (Meta)
+// --------------------------------------------------------------------------
+async function openConnections() {
+  const m = await window.api.getMeta();
+  $('#mAppId').value = m.appId || '';
+  $('#mAppSecret').value = m.appSecret || '';
+  $('#mPageId').value = m.pageId || '';
+  $('#mPageToken').value = m.pageToken || '';
+  $('#mIgUserId').value = m.igUserId || '';
+  const box = $('#connResult');
+  box.className = 'conn-result';
+  box.textContent = '';
+  updateMetaBadge(!!m.pageToken);
+  $('#connModal').hidden = false;
+}
+
+function readMetaForm() {
+  return {
+    appId: $('#mAppId').value.trim(),
+    appSecret: $('#mAppSecret').value.trim(),
+    pageId: $('#mPageId').value.trim(),
+    pageToken: $('#mPageToken').value.trim(),
+    igUserId: $('#mIgUserId').value.trim(),
+    label: 'Meta',
+  };
+}
+
+async function testMeta() {
+  const box = $('#connResult');
+  box.className = 'conn-result';
+  box.textContent = 'Probando…';
+  const res = await window.api.testMeta(readMetaForm());
+  if (res.ok) {
+    box.className = 'conn-result ok';
+    box.textContent = '✅ Conectado. Página: ' + res.pageName + (res.igUsername ? '  ·  IG: @' + res.igUsername : '  ·  (sin IG configurado)');
+    updateMetaBadge(true);
+  } else {
+    box.className = 'conn-result err';
+    box.textContent = '❌ ' + (res.error || 'No se pudo conectar.');
+    updateMetaBadge(false);
+  }
+}
+
+async function saveMeta() {
+  await window.api.saveMeta(readMetaForm());
+  await testMeta();
+}
+
+function updateMetaBadge(ok) {
+  const b = $('#metaStatus');
+  b.textContent = ok ? 'Conectado' : 'Sin conectar';
+  b.className = 'conn-badge' + (ok ? ' ok' : '');
+}
+
+// --------------------------------------------------------------------------
+// Eventos UI
+// --------------------------------------------------------------------------
+function wire() {
+  $('#btnNew').onclick = () => openForm({ date: new Date() });
+  $('#modalClose').onclick = closeForm;
+  $('#modal').addEventListener('click', (e) => { if (e.target.id === 'modal') closeForm(); });
+  $('#btnSave').onclick = saveForm;
+  $('#btnDelete').onclick = deleteTask;
+  $('#btnDone').onclick = markDone;
+  $('#btnReschedule').onclick = reschedule;
+  $('#btnDeleteTemplate').onclick = deleteTemplate;
+  $('#btnPublishNow').onclick = publishNow;
+  $('#fTemplate').onchange = (e) => { if (e.target.value) applyTemplate(e.target.value); };
+  $$('input[name="ftype"]').forEach((r) => (r.onchange = () => { syncContentBlock(); syncAutoFields(); }));
+  $$('input[name="pubmode"]').forEach((r) => (r.onchange = syncAutoFields));
+  $('#fStoryLink').onchange = syncStoryLink;
+
+  // Conexiones
+  $('#btnConnections').onclick = openConnections;
+  $('#connClose').onclick = () => ($('#connModal').hidden = true);
+  $('#connModal').addEventListener('click', (e) => { if (e.target.id === 'connModal') $('#connModal').hidden = true; });
+  $('#btnTestMeta').onclick = testMeta;
+  $('#btnSaveMeta').onclick = saveMeta;
+
+  // Tabs
+  $$('.tab').forEach((tab) => {
+    tab.onclick = () => {
+      $$('.tab').forEach((t) => t.classList.remove('active'));
+      tab.classList.add('active');
+      const which = tab.dataset.tab;
+      $('#listPendientes').hidden = which !== 'pendientes';
+      $('#listRealizadas').hidden = which !== 'realizadas';
+    };
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (!$('#connModal').hidden) $('#connModal').hidden = true;
+    else if (!$('#modal').hidden) closeForm();
+  });
+}
+
+// --------------------------------------------------------------------------
+// Arranque
+// --------------------------------------------------------------------------
+window.addEventListener('DOMContentLoaded', () => {
+  wire();
+  initCalendar();
+  load();
+});

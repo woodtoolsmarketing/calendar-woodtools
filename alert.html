@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline'" />
+  <title>Recordatorio Trascendental</title>
+  <style>
+    :root { --rosa: #E84A6F; --rosa-osc: #b5224a; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: radial-gradient(120% 120% at 50% 0%, #2a0f1b 0%, #1a0e14 70%);
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+      border: 2px solid var(--rosa);
+      animation: pulse 1.6s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { border-color: var(--rosa); }
+      50% { border-color: #ff86a4; }
+    }
+    .top {
+      -webkit-app-region: drag;
+      background: linear-gradient(90deg, var(--rosa-osc), var(--rosa));
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .top .badge {
+      font-size: 12px;
+      letter-spacing: 2px;
+      font-weight: 700;
+      text-transform: uppercase;
+      opacity: .95;
+    }
+    .top .bell { font-size: 20px; }
+    .body {
+      flex: 1;
+      padding: 22px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      overflow-y: auto;
+    }
+    .title { font-size: 26px; font-weight: 700; line-height: 1.2; }
+    .when { font-size: 14px; color: #ffc2d2; }
+    .meta { font-size: 13px; color: #e7c9d3; }
+    .notes {
+      font-size: 14px; color: #f2dfe6;
+      background: rgba(255,255,255,.06);
+      border-left: 3px solid var(--rosa);
+      padding: 10px 12px; border-radius: 6px;
+      white-space: pre-wrap;
+    }
+    .content-tag {
+      display: inline-block;
+      font-size: 12px; font-weight: 600;
+      background: rgba(255,255,255,.12);
+      padding: 4px 10px; border-radius: 999px;
+      width: fit-content;
+    }
+    .actions {
+      display: flex; gap: 10px; padding: 16px 20px;
+      background: rgba(0,0,0,.25);
+    }
+    button {
+      flex: 1; border: 0; border-radius: 8px;
+      padding: 12px 10px; font-size: 14px; font-weight: 600;
+      cursor: pointer; transition: transform .05s, filter .15s;
+      color: #fff;
+    }
+    button:active { transform: translateY(1px); }
+    .btn-done { background: #2EC4B6; }
+    .btn-snooze { background: #5a6072; }
+    .btn-close { background: #3a2330; }
+    button:hover { filter: brightness(1.08); }
+  </style>
+</head>
+<body>
+  <div class="top">
+    <span class="bell">🔔</span>
+    <span class="badge">Recordatorio Trascendental</span>
+  </div>
+  <div class="body">
+    <span id="contentTag" class="content-tag" style="display:none"></span>
+    <div id="title" class="title">—</div>
+    <div id="when" class="when"></div>
+    <div id="meta" class="meta"></div>
+    <div id="notes" class="notes" style="display:none"></div>
+  </div>
+  <div class="actions">
+    <button class="btn-done" id="btnDone">✓ Hecha</button>
+    <button class="btn-snooze" id="btnSnooze">⏰ Posponer 10 min</button>
+    <button class="btn-close" id="btnClose">Cerrar</button>
+  </div>
+
+  <script>
+    let current = { taskId: null, occKey: null };
+
+    function play() {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const beep = (freq, start, dur) => {
+          const o = ctx.createOscillator();
+          const g = ctx.createGain();
+          o.connect(g); g.connect(ctx.destination);
+          o.frequency.value = freq; o.type = 'sine';
+          g.gain.setValueAtTime(0.0001, ctx.currentTime + start);
+          g.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + start + 0.02);
+          g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + start + dur);
+          o.start(ctx.currentTime + start);
+          o.stop(ctx.currentTime + start + dur);
+        };
+        beep(880, 0, 0.25); beep(1320, 0.3, 0.3);
+      } catch (e) {}
+    }
+
+    window.alertApi.onData((payload) => {
+      const t = payload.task;
+      current = { taskId: t.id, occKey: payload.occKey };
+      document.getElementById('title').textContent = t.title || 'Tarea';
+      document.getElementById('when').textContent = payload.whenText || '';
+
+      if (t.type === 'content') {
+        const tag = document.getElementById('contentTag');
+        const plats = (t.platforms || []).join(' · ');
+        tag.textContent = '📲 ' + (t.contentType || 'Contenido') + (plats ? ' — ' + plats : '');
+        tag.style.display = 'inline-block';
+      }
+      if (t.notes) {
+        const n = document.getElementById('notes');
+        n.textContent = t.notes;
+        n.style.display = 'block';
+      }
+      play();
+    });
+
+    document.getElementById('btnDone').onclick = () =>
+      window.alertApi.action({ action: 'done', taskId: current.taskId, occKey: current.occKey });
+    document.getElementById('btnSnooze').onclick = () =>
+      window.alertApi.action({ action: 'snooze', taskId: current.taskId, occKey: current.occKey });
+    document.getElementById('btnClose').onclick = () =>
+      window.alertApi.action({ action: 'close', taskId: current.taskId, occKey: current.occKey });
+  </script>
+</body>
+</html>
