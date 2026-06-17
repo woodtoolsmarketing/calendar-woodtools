@@ -19,6 +19,10 @@ contextBridge.exposeInMainWorld('api', {
   getMeta: () => ipcRenderer.invoke('connections:getMeta'),
   saveMeta: (data) => ipcRenderer.invoke('connections:saveMeta', data),
   testMeta: (creds) => ipcRenderer.invoke('connections:testMeta', creds),
+  upgradeMetaToken: (creds) => ipcRenderer.invoke('connections:upgradeMetaToken', creds),
+  getHosting: () => ipcRenderer.invoke('connections:getHosting'),
+  saveHosting: (data) => ipcRenderer.invoke('connections:saveHosting', data),
+  pickMedia: () => ipcRenderer.invoke('media:pick'),
   publishNow: (task) => ipcRenderer.invoke('content:publishNow', task),
 });
 

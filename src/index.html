@@ -129,9 +129,26 @@
           <select id="fRecur">
             <option value="none">No se repite</option>
             <option value="daily">Todos los días</option>
-            <option value="weekly">Cada semana (mismo día)</option>
+            <option value="weekly">Días de la semana…</option>
             <option value="monthly">Cada mes (mismo número)</option>
           </select>
+        </div>
+
+        <div class="field" id="weekDaysBlock" hidden>
+          <label>¿Qué días querés que te recuerde?</label>
+          <div class="weekdays">
+            <label class="wd"><input type="checkbox" name="wday" value="1" /><span>Lun</span></label>
+            <label class="wd"><input type="checkbox" name="wday" value="2" /><span>Mar</span></label>
+            <label class="wd"><input type="checkbox" name="wday" value="3" /><span>Mié</span></label>
+            <label class="wd"><input type="checkbox" name="wday" value="4" /><span>Jue</span></label>
+            <label class="wd"><input type="checkbox" name="wday" value="5" /><span>Vie</span></label>
+            <label class="wd"><input type="checkbox" name="wday" value="6" /><span>Sáb</span></label>
+            <label class="wd"><input type="checkbox" name="wday" value="0" /><span>Dom</span></label>
+          </div>
+          <label class="check-line" style="margin-top:8px">
+            <input type="checkbox" id="fWeekdaysOnly" />
+            <span>¿Dejar para los días hábiles? (Lunes a Viernes)</span>
+          </label>
         </div>
 
         <!-- Tipo: tarea / contenido -->
@@ -177,10 +194,18 @@
 
           <div id="autoFields" hidden>
             <div class="field">
-              <label>URL pública del archivo (imagen o video)</label>
-              <input id="fMediaUrl" type="url" placeholder="https://.../reel.mp4" autocomplete="off" />
-              <small class="hint">Instagram exige que el archivo esté en una URL pública (tu web, o Drive/Dropbox con enlace directo).</small>
+              <label>Archivo (imagen o video)</label>
+              <div class="file-row">
+                <button type="button" id="btnPickMedia" class="btn-ghost">📎 Elegir archivo…</button>
+                <span id="mediaFileName" class="file-name">Ningún archivo</span>
+                <button type="button" id="btnClearMedia" class="icon-btn" title="Quitar archivo" hidden>✕</button>
+              </div>
+              <small class="hint">La app lo sube sola para Instagram. JPG o MP4 (Instagram pide <strong>JPG</strong> para fotos, no PNG).</small>
             </div>
+            <details class="url-advanced">
+              <summary>o pegar una URL pública (avanzado)</summary>
+              <input id="fMediaUrl" type="url" placeholder="https://.../reel.mp4" autocomplete="off" />
+            </details>
             <div class="field">
               <label>Texto / Epígrafe de la publicación</label>
               <textarea id="fCaption" rows="2" placeholder="Lo que va como descripción del post"></textarea>
@@ -263,11 +288,33 @@
             <label>ID de la cuenta de Instagram (Business)</label>
             <input id="mIgUserId" type="text" autocomplete="off" />
           </div>
+          <div class="field">
+            <label>Token de Instagram (método nuevo, para publicar)</label>
+            <textarea id="mIgToken" rows="2" autocomplete="off" placeholder="Lo generás en el panel de Meta → Instagram → 'inicio de sesión con Instagram'"></textarea>
+            <small class="hint">Este es distinto al token de Página. Es el que permite <strong>publicar</strong> en Instagram sin la revisión de semanas.</small>
+          </div>
           <div id="connResult" class="conn-result"></div>
+        </div>
+
+        <div class="conn-section" style="margin-top:18px;border-top:1px solid var(--line);padding-top:16px;">
+          <div class="conn-title">
+            <span>🖼️ Hosting de archivos (opcional)</span>
+            <span id="hostingStatus" class="conn-badge">Gratis</span>
+          </div>
+          <p class="hint">Para subir archivos a Instagram. Si lo dejás vacío, la app usa un hosting gratuito temporal (anda sin configurar nada). Para algo más confiable, creá una cuenta gratis en <strong>Cloudinary</strong> y pegá estos 2 datos.</p>
+          <div class="field">
+            <label>Cloudinary — Cloud name</label>
+            <input id="hCloudName" type="text" autocomplete="off" placeholder="opcional" />
+          </div>
+          <div class="field">
+            <label>Cloudinary — Upload preset (sin firmar)</label>
+            <input id="hUploadPreset" type="text" autocomplete="off" placeholder="opcional" />
+          </div>
         </div>
       </div>
       <div class="modal-foot">
         <button id="btnTestMeta" class="btn-ghost">Probar conexión</button>
+        <button id="btnUpgradeToken" class="btn-ghost">🔄 Renovar token (60 días)</button>
         <div class="spacer"></div>
         <button id="btnSaveMeta" class="btn-primary">Guardar conexión</button>
       </div>

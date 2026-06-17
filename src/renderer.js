@@ -10,6 +10,7 @@ let state = { tasks: [], templates: [] };
 let calendar = null;
 let editing = null;        // tarea en edición (o null si es nueva)
 let editingOccKey = null;  // ocurrencia puntual seleccionada
+let selectedMedia = null;  // { path, name } del archivo elegido
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -129,6 +130,9 @@ function openForm({ date, end, task = null, occKey = null }) {
     $('#fStart').value = toTimeInput(occStart);
     $('#fEnd').value = toTimeInput(new Date(occStart.getTime() + Recurrence.durationMs(task)));
     $('#fRecur').value = (task.recurrence && task.recurrence.freq) || 'none';
+    const recurDays = (task.recurrence && task.recurrence.days) || [];
+    $$('input[name="wday"]').forEach((c) => { c.checked = recurDays.includes(parseInt(c.value, 10)); });
+    $('#fWeekdaysOnly').checked = false;
     $('#fNotes').value = task.notes || '';
     setRadio('ftype', task.type || 'task');
     // contenido
@@ -138,6 +142,7 @@ function openForm({ date, end, task = null, occKey = null }) {
     $('#fMediaUrl').value = task.mediaUrl || '';
     $('#fCaption').value = task.caption || '';
     $('#fLink').value = task.link || '';
+    selectedMedia = task.mediaPath ? { path: task.mediaPath, name: task.mediaName || 'archivo' } : null;
     $('#fStoryLink').checked = false;
     $('#fSaveTemplate').checked = false;
   } else {
@@ -150,6 +155,8 @@ function openForm({ date, end, task = null, occKey = null }) {
     const e = end ? new Date(end) : new Date(d.getTime() + 30 * 60000);
     $('#fEnd').value = toTimeInput(e);
     $('#fRecur').value = 'none';
+    $$('input[name="wday"]').forEach((c) => (c.checked = false));
+    $('#fWeekdaysOnly').checked = false;
     $('#fNotes').value = '';
     setRadio('ftype', 'task');
     $$('input[name="plat"]').forEach((c) => (c.checked = false));
@@ -158,6 +165,7 @@ function openForm({ date, end, task = null, occKey = null }) {
     $('#fMediaUrl').value = '';
     $('#fCaption').value = '';
     $('#fLink').value = '';
+    selectedMedia = null;
     $('#fStoryLink').checked = false;
     $('#fSaveTemplate').checked = false;
   }
@@ -165,6 +173,8 @@ function openForm({ date, end, task = null, occKey = null }) {
   syncContentBlock();
   syncStoryLink();
   syncAutoFields();
+  syncWeekDays();
+  renderMediaName();
   $('#btnDelete').hidden = !task;
   $('#btnDone').hidden = !task;
   $('#btnReschedule').hidden = !task;
@@ -195,7 +205,14 @@ function readForm() {
   task.notes = $('#fNotes').value.trim();
   task.type = type;
   const freq = $('#fRecur').value;
-  task.recurrence = freq === 'none' ? null : { freq };
+  if (freq === 'none') {
+    task.recurrence = null;
+  } else if (freq === 'weekly') {
+    const days = $$('input[name="wday"]:checked').map((c) => parseInt(c.value, 10));
+    task.recurrence = { freq: 'weekly', days };
+  } else {
+    task.recurrence = { freq };
+  }
 
   if (type === 'content') {
     task.platforms = $$('input[name="plat"]:checked').map((c) => c.value);
@@ -204,6 +221,13 @@ function readForm() {
     task.mediaUrl = $('#fMediaUrl').value.trim();
     task.caption = $('#fCaption').value.trim();
     task.link = $('#fLink').value.trim();
+    if (selectedMedia) {
+      task.mediaPath = selectedMedia.path;
+      task.mediaName = selectedMedia.name;
+    } else {
+      delete task.mediaPath;
+      delete task.mediaName;
+    }
   } else {
     delete task.platforms;
     delete task.contentType;
@@ -211,6 +235,8 @@ function readForm() {
     delete task.mediaUrl;
     delete task.caption;
     delete task.link;
+    delete task.mediaPath;
+    delete task.mediaName;
   }
   // Reprogramar limpia los disparos previos
   task.firedKeys = [];
@@ -442,6 +468,46 @@ function syncAutoFields() {
   $('#btnPublishNow').hidden = !(auto && editing);
 }
 
+function syncWeekDays() {
+  $('#weekDaysBlock').hidden = $('#fRecur').value !== 'weekly';
+}
+
+function applyWeekdaysOnly() {
+  // Días hábiles = Lunes(1) a Viernes(5)
+  const habiles = [1, 2, 3, 4, 5];
+  $$('input[name="wday"]').forEach((c) => {
+    c.checked = habiles.includes(parseInt(c.value, 10));
+  });
+}
+
+function renderMediaName() {
+  const label = $('#mediaFileName');
+  const clearBtn = $('#btnClearMedia');
+  if (selectedMedia && selectedMedia.name) {
+    label.textContent = selectedMedia.name;
+    label.classList.add('has-file');
+    clearBtn.hidden = false;
+  } else {
+    label.textContent = 'Ningún archivo';
+    label.classList.remove('has-file');
+    clearBtn.hidden = true;
+  }
+}
+
+async function pickMedia() {
+  const res = await window.api.pickMedia();
+  if (!res) return;
+  if (res.error) { alert('No se pudo cargar el archivo: ' + res.error); return; }
+  selectedMedia = { path: res.path, name: res.name };
+  $('#fMediaUrl').value = ''; // el archivo tiene prioridad sobre la URL
+  renderMediaName();
+}
+
+function clearMedia() {
+  selectedMedia = null;
+  renderMediaName();
+}
+
 // --------------------------------------------------------------------------
 // Publicar ahora (manual)
 // --------------------------------------------------------------------------
@@ -476,6 +542,11 @@ async function openConnections() {
   $('#mPageId').value = m.pageId || '';
   $('#mPageToken').value = m.pageToken || '';
   $('#mIgUserId').value = m.igUserId || '';
+  $('#mIgToken').value = m.igToken || '';
+  const h = await window.api.getHosting();
+  $('#hCloudName').value = h.cloudName || '';
+  $('#hUploadPreset').value = h.uploadPreset || '';
+  updateHostingBadge(!!(h.cloudName && h.uploadPreset));
   const box = $('#connResult');
   box.className = 'conn-result';
   box.textContent = '';
@@ -490,6 +561,7 @@ function readMetaForm() {
     pageId: $('#mPageId').value.trim(),
     pageToken: $('#mPageToken').value.trim(),
     igUserId: $('#mIgUserId').value.trim(),
+    igToken: $('#mIgToken').value.trim(),
     label: 'Meta',
   };
 }
@@ -501,7 +573,23 @@ async function testMeta() {
   const res = await window.api.testMeta(readMetaForm());
   if (res.ok) {
     box.className = 'conn-result ok';
-    box.textContent = '✅ Conectado. Página: ' + res.pageName + (res.igUsername ? '  ·  IG: @' + res.igUsername : '  ·  (sin IG configurado)');
+    let txt = '✅ Conectado. Página: ' + res.pageName + (res.igUsername ? '  ·  IG: @' + res.igUsername : '  ·  (sin IG configurado)');
+    txt += '\n\nDIAGNÓSTICO DEL TOKEN:';
+    txt += '\n• Tipo: ' + (res.tokenType || '—') + (res.tokenType === 'PAGE' ? ' ✅' : ' ⚠️ (debería ser PAGE)');
+    if (res.tokenEntity) txt += '\n• El token pertenece a: ' + res.tokenEntity;
+    txt += '\n• Vence: ' + (res.expiresAt || '—');
+    txt += '\n• Permisos: ' + ((res.scopes && res.scopes.length) ? res.scopes.join(', ') : '—');
+    if (res.scopes && res.scopes.length) {
+      const need = ['pages_manage_posts', 'pages_read_engagement', 'instagram_content_publish', 'instagram_business_content_publish'];
+      const faltan = need.filter((p) => !res.scopes.includes(p));
+      if (faltan.length) txt += '\n• Faltan: ' + faltan.join(', ');
+    }
+    if (res.debugError) txt += '\n• (No pude leer permisos: ' + res.debugError + ')';
+    txt += '\n\nINSTAGRAM (método nuevo):';
+    if (res.igLogin) txt += '\n• Token de IG OK → ' + res.igLogin + ' ✅';
+    else if (res.igLoginError) txt += '\n• Token de IG con error: ' + res.igLoginError;
+    else txt += '\n• Sin token de IG cargado (pegá el token nuevo para publicar en Instagram)';
+    box.textContent = txt;
     updateMetaBadge(true);
   } else {
     box.className = 'conn-result err';
@@ -510,8 +598,33 @@ async function testMeta() {
   }
 }
 
+async function upgradeToken() {
+  const box = $('#connResult');
+  box.className = 'conn-result';
+  box.textContent = 'Renovando el token a 60 días…';
+  // Guardamos primero los datos del formulario (token fresco + App Secret correcto)
+  await window.api.saveMeta(readMetaForm());
+  const res = await window.api.upgradeMetaToken(readMetaForm());
+  if (res.ok) {
+    const m = await window.api.getMeta();
+    $('#mPageToken').value = m.pageToken || '';
+    box.className = 'conn-result ok';
+    box.textContent = '✅ Token renovado a larga duración (no vence). Página: ' + (res.pageName || '') + '\nProbá "Probar conexión" para confirmar.';
+    updateMetaBadge(true);
+  } else {
+    box.className = 'conn-result err';
+    box.textContent = '❌ No se pudo renovar: ' + res.error + '\n\nRevisá que el App Secret esté bien y que el token pegado sea fresco (recién generado).';
+  }
+}
+
 async function saveMeta() {
   await window.api.saveMeta(readMetaForm());
+  const hosting = {
+    cloudName: $('#hCloudName').value.trim(),
+    uploadPreset: $('#hUploadPreset').value.trim(),
+  };
+  await window.api.saveHosting(hosting);
+  updateHostingBadge(!!(hosting.cloudName && hosting.uploadPreset));
   await testMeta();
 }
 
@@ -519,6 +632,12 @@ function updateMetaBadge(ok) {
   const b = $('#metaStatus');
   b.textContent = ok ? 'Conectado' : 'Sin conectar';
   b.className = 'conn-badge' + (ok ? ' ok' : '');
+}
+
+function updateHostingBadge(cloudinary) {
+  const b = $('#hostingStatus');
+  b.textContent = cloudinary ? 'Cloudinary' : 'Gratis';
+  b.className = 'conn-badge' + (cloudinary ? ' ok' : '');
 }
 
 // --------------------------------------------------------------------------
@@ -534,6 +653,10 @@ function wire() {
   $('#btnReschedule').onclick = reschedule;
   $('#btnDeleteTemplate').onclick = deleteTemplate;
   $('#btnPublishNow').onclick = publishNow;
+  $('#btnPickMedia').onclick = pickMedia;
+  $('#btnClearMedia').onclick = clearMedia;
+  $('#fRecur').onchange = syncWeekDays;
+  $('#fWeekdaysOnly').onchange = (e) => { if (e.target.checked) applyWeekdaysOnly(); };
   $('#fTemplate').onchange = (e) => { if (e.target.value) applyTemplate(e.target.value); };
   $$('input[name="ftype"]').forEach((r) => (r.onchange = () => { syncContentBlock(); syncAutoFields(); }));
   $$('input[name="pubmode"]').forEach((r) => (r.onchange = syncAutoFields));
@@ -544,6 +667,7 @@ function wire() {
   $('#connClose').onclick = () => ($('#connModal').hidden = true);
   $('#connModal').addEventListener('click', (e) => { if (e.target.id === 'connModal') $('#connModal').hidden = true; });
   $('#btnTestMeta').onclick = testMeta;
+  $('#btnUpgradeToken').onclick = upgradeToken;
   $('#btnSaveMeta').onclick = saveMeta;
 
   // Tabs

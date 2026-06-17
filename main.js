@@ -3,12 +3,14 @@
  * Calendario interactivo WoodTools: ventana del calendario, bandeja del sistema,
  * planificador de recordatorios y notificaciones por nivel de importancia.
  */
-const { app, BrowserWindow, Tray, Menu, ipcMain, Notification, nativeImage } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, Notification, nativeImage, dialog } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const store = require('./store');
 const Recurrence = require('./recurrence');
 const credentials = require('./credentials');
 const meta = require('./integrations/meta');
+const hosting = require('./integrations/hosting');
 
 const APP_ID = 'com.woodtools.calendario';
 const ICON_PATH = path.join(__dirname, 'assets', 'icon.png');
@@ -298,11 +300,50 @@ ipcMain.handle('connections:getMeta', () => credentials.getPlatform('meta') || {
 ipcMain.handle('connections:saveMeta', (_e, data) => credentials.setPlatform('meta', data));
 ipcMain.handle('connections:testMeta', (_e, creds) => meta.testConnection(creds));
 
+// Renueva el token de Facebook a larga duración (60 días, no vence) y lo guarda
+ipcMain.handle('connections:upgradeMetaToken', async (_e, creds) => {
+  try {
+    const r = await meta.exchangeForLongLived(creds);
+    const merged = { ...creds, pageToken: r.pageToken };
+    credentials.setPlatform('meta', merged);
+    return { ok: true, pageName: r.pageName };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+ipcMain.handle('connections:getHosting', () => credentials.getPlatform('hosting') || {});
+ipcMain.handle('connections:saveHosting', (_e, data) => credentials.setPlatform('hosting', data));
+
+// IPC — elegir archivo local (imagen/video) y guardarlo en la app
+ipcMain.handle('media:pick', async () => {
+  const res = await dialog.showOpenDialog(mainWindow, {
+    title: 'Elegí la imagen o el video',
+    properties: ['openFile'],
+    filters: [
+      { name: 'Imágenes y videos', extensions: ['jpg', 'jpeg', 'png', 'mp4', 'mov', 'm4v'] },
+      { name: 'Todos', extensions: ['*'] },
+    ],
+  });
+  if (res.canceled || !res.filePaths.length) return null;
+  const src = res.filePaths[0];
+  try {
+    const mediaDir = path.join(app.getPath('userData'), 'media');
+    fs.mkdirSync(mediaDir, { recursive: true });
+    const ext = path.extname(src) || '';
+    const dest = path.join(mediaDir, Date.now().toString(36) + ext);
+    fs.copyFileSync(src, dest);
+    return { path: dest, name: path.basename(src) };
+  } catch (e) {
+    return { error: e.message };
+  }
+});
+
 // IPC — publicar una tarea de contenido ahora mismo (botón manual)
 ipcMain.handle('content:publishNow', async (_e, task) => {
   const creds = credentials.getPlatform('meta');
   if (!creds) return [{ error: 'No hay conexión de Meta configurada.' }];
   try {
+    await resolveMediaUrl(task);
     const results = await meta.publishForTask(creds, task);
     const ok = !results.some((r) => r.error);
     if (ok) {
@@ -373,6 +414,15 @@ function broadcastChanged() {
 // ----------------------------------------------------------------------------
 // Publicación automática de contenido
 // ----------------------------------------------------------------------------
+// Si la tarea tiene un archivo local, lo sube a una URL pública (Instagram la exige)
+async function resolveMediaUrl(task) {
+  if (task.mediaPath && !task.mediaUrl) {
+    const hostCreds = credentials.getPlatform('hosting');
+    task.mediaUrl = await hosting.uploadPublic(task.mediaPath, hostCreds);
+  }
+  return task;
+}
+
 async function attemptPublish(task, instance) {
   const creds = credentials.getPlatform('meta');
   if (!creds) {
@@ -380,6 +430,7 @@ async function attemptPublish(task, instance) {
     return;
   }
   try {
+    await resolveMediaUrl(task);
     const results = await meta.publishForTask(creds, task);
     const errors = results.filter((r) => r.error);
     if (errors.length) {

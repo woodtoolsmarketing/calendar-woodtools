@@ -44,7 +44,12 @@
     } else if (freq === 'daily') {
       matches = true;
     } else if (freq === 'weekly') {
-      matches = base.getDay() === date.getDay();
+      // Si hay días elegidos (0=Dom..6=Sáb), recuerda en esos días; si no, el mismo día del inicio
+      if (task.recurrence && Array.isArray(task.recurrence.days) && task.recurrence.days.length) {
+        matches = task.recurrence.days.includes(date.getDay());
+      } else {
+        matches = base.getDay() === date.getDay();
+      }
     } else if (freq === 'monthly') {
       matches = base.getDate() === date.getDate();
     }
