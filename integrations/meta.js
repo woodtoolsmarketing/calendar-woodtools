@@ -135,6 +135,23 @@ async function exchangeForLongLived(creds) {
   return { pageToken: page.access_token, pageName: page.name };
 }
 
+// Convierte lo que haya en un token de Página PERMANENTE (no vence), si es posible.
+// Devuelve { pageToken, changed }. Best-effort: si ya es permanente, lo deja igual.
+async function makePermanent(creds) {
+  let isUser = false;
+  try {
+    const me = await graphGet('me', creds.pageToken, 'id');
+    isUser = String(me.id) !== String(creds.pageId);
+  } catch (_) {
+    isUser = true; // si /me falla, probablemente sea un token de usuario (o venció)
+  }
+  if (isUser) {
+    const r = await exchangeForLongLived(creds); // user token → page token sin vencimiento
+    return { pageToken: r.pageToken, changed: true };
+  }
+  return { pageToken: creds.pageToken, changed: false };
+}
+
 async function publishFacebook(creds, content) {
   if (!creds.pageId || !creds.pageToken) throw new Error('Facebook: falta Página o token.');
   const token = await ensurePageToken(creds);
@@ -386,4 +403,4 @@ async function publishForTask(creds, task) {
   return results;
 }
 
-module.exports = { testConnection, publishFacebook, publishInstagram, publishInstagramLogin, publishForTask, exchangeForLongLived };
+module.exports = { testConnection, publishFacebook, publishInstagram, publishInstagramLogin, publishForTask, exchangeForLongLived, makePermanent };

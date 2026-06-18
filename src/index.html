@@ -207,12 +207,24 @@
               <input id="fMediaUrl" type="url" placeholder="https://.../reel.mp4" autocomplete="off" />
             </details>
             <div class="field">
-              <label>Texto / Epígrafe de la publicación</label>
+              <label>Texto / Epígrafe (Instagram, Facebook, TikTok, Threads)</label>
               <textarea id="fCaption" rows="2" placeholder="Lo que va como descripción del post"></textarea>
             </div>
             <div class="field">
               <label>Link (para publicaciones de Facebook)</label>
               <input id="fLink" type="url" placeholder="https://woodtools..." autocomplete="off" />
+            </div>
+
+            <div id="ytFields" class="platform-box" hidden>
+              <div class="platform-box-title">▶️ YouTube (personalizado)</div>
+              <div class="field">
+                <label>Título de YouTube</label>
+                <input id="fYtTitle" type="text" maxlength="100" placeholder="Si lo dejás vacío, usa el nombre de la tarea" autocomplete="off" />
+              </div>
+              <div class="field">
+                <label>Descripción de YouTube</label>
+                <textarea id="fYtDescription" rows="3" placeholder="Si lo dejás vacío, usa el epígrafe de arriba"></textarea>
+              </div>
             </div>
           </div>
 
@@ -310,6 +322,73 @@
             <label>Cloudinary — Upload preset (sin firmar)</label>
             <input id="hUploadPreset" type="text" autocomplete="off" placeholder="opcional" />
           </div>
+        </div>
+
+        <div class="conn-section" style="margin-top:18px;border-top:1px solid var(--line);padding-top:16px;">
+          <div class="conn-title">
+            <span>▶️ YouTube</span>
+            <span id="ytStatus" class="conn-badge">Sin conectar</span>
+          </div>
+          <p class="hint">Para subir y programar videos/Shorts en tu canal. Creá un proyecto en Google Cloud (te dejé el paso a paso en <code>GUIA-YOUTUBE.md</code>) y pegá estos 2 datos, después tocá "Conectar".</p>
+          <div class="field">
+            <label>Client ID (Google)</label>
+            <input id="ytClientId" type="text" autocomplete="off" placeholder="...apps.googleusercontent.com" />
+          </div>
+          <div class="field">
+            <label>Client Secret (Google)</label>
+            <input id="ytClientSecret" type="password" autocomplete="off" />
+          </div>
+          <div class="conn-foot-row">
+            <button id="btnConnectYoutube" class="btn-ghost">▶️ Conectar con YouTube</button>
+            <button id="btnTestYoutube" class="btn-ghost">Probar</button>
+          </div>
+          <div id="ytResult" class="conn-result"></div>
+        </div>
+
+        <div class="conn-section" style="margin-top:18px;border-top:1px solid var(--line);padding-top:16px;">
+          <div class="conn-title">
+            <span>🧵 Threads</span>
+            <span id="thStatus" class="conn-badge">Sin conectar</span>
+          </div>
+          <p class="hint">Identificador y clave de tu app de Threads + el token (lo generás en el panel de Meta → Threads, igual que Instagram). La app/secret sirven para renovar el token.</p>
+          <div class="field">
+            <label>Identificador de la app de Threads</label>
+            <input id="thAppId" type="text" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label>Clave secreta de la app de Threads</label>
+            <input id="thAppSecret" type="password" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label>Token de Threads</label>
+            <textarea id="thToken" rows="2" autocomplete="off"></textarea>
+          </div>
+          <div class="conn-foot-row">
+            <button id="btnTestThreads" class="btn-ghost">Probar Threads</button>
+          </div>
+          <div id="thResult" class="conn-result"></div>
+        </div>
+
+        <div class="conn-section" style="margin-top:18px;border-top:1px solid var(--line);padding-top:16px;">
+          <div class="conn-title">
+            <span>🎵 TikTok</span>
+            <span id="ttStatus" class="conn-badge">Sin conectar</span>
+          </div>
+          <p class="hint">Necesita una app de desarrollador de TikTok (Client Key + Secret). Sin auditar, el video va a tus <strong>borradores</strong> de TikTok y lo publicás vos. Cuando la app esté auditada, tildá "posteo directo".</p>
+          <div class="field">
+            <label>Client Key</label>
+            <input id="ttClientKey" type="text" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label>Client Secret</label>
+            <input id="ttClientSecret" type="password" autocomplete="off" />
+          </div>
+          <label class="check-line"><input type="checkbox" id="ttDirectPost" /> <span>Posteo directo (solo si tu app de TikTok ya está auditada)</span></label>
+          <div class="conn-foot-row">
+            <button id="btnConnectTiktok" class="btn-ghost">🎵 Conectar con TikTok</button>
+            <button id="btnTestTiktok" class="btn-ghost">Probar</button>
+          </div>
+          <div id="ttResult" class="conn-result"></div>
         </div>
       </div>
       <div class="modal-foot">

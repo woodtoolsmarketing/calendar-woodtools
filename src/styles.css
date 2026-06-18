@@ -210,6 +210,9 @@ textarea { resize: vertical; }
 .conn-result { font-size: 13px; padding: 10px 12px; border-radius: 8px; display: none; white-space: pre-wrap; line-height: 1.5; }
 .conn-result.ok { display: block; background: #0f3d38; color: #9af0e3; }
 .conn-result.err { display: block; background: #4a2630; color: #ffb3c2; white-space: pre-wrap; }
+.conn-foot-row { display: flex; gap: 8px; margin: 4px 0 8px; }
+.platform-box { background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.platform-box-title { font-size: 13px; font-weight: 700; color: var(--text); }
 
 /* Scrollbars */
 ::-webkit-scrollbar { width: 10px; height: 10px; }

@@ -142,6 +142,8 @@ function openForm({ date, end, task = null, occKey = null }) {
     $('#fMediaUrl').value = task.mediaUrl || '';
     $('#fCaption').value = task.caption || '';
     $('#fLink').value = task.link || '';
+    $('#fYtTitle').value = task.ytTitle || '';
+    $('#fYtDescription').value = task.ytDescription || '';
     selectedMedia = task.mediaPath ? { path: task.mediaPath, name: task.mediaName || 'archivo' } : null;
     $('#fStoryLink').checked = false;
     $('#fSaveTemplate').checked = false;
@@ -165,6 +167,8 @@ function openForm({ date, end, task = null, occKey = null }) {
     $('#fMediaUrl').value = '';
     $('#fCaption').value = '';
     $('#fLink').value = '';
+    $('#fYtTitle').value = '';
+    $('#fYtDescription').value = '';
     selectedMedia = null;
     $('#fStoryLink').checked = false;
     $('#fSaveTemplate').checked = false;
@@ -221,6 +225,8 @@ function readForm() {
     task.mediaUrl = $('#fMediaUrl').value.trim();
     task.caption = $('#fCaption').value.trim();
     task.link = $('#fLink').value.trim();
+    task.ytTitle = $('#fYtTitle').value.trim();
+    task.ytDescription = $('#fYtDescription').value.trim();
     if (selectedMedia) {
       task.mediaPath = selectedMedia.path;
       task.mediaName = selectedMedia.name;
@@ -235,6 +241,8 @@ function readForm() {
     delete task.mediaUrl;
     delete task.caption;
     delete task.link;
+    delete task.ytTitle;
+    delete task.ytDescription;
     delete task.mediaPath;
     delete task.mediaName;
   }
@@ -466,6 +474,8 @@ function syncAutoFields() {
   const auto = getRadio('ftype') === 'content' && getRadio('pubmode') === 'auto';
   $('#autoFields').hidden = !auto;
   $('#btnPublishNow').hidden = !(auto && editing);
+  const ytChecked = $$('input[name="plat"]:checked').some((c) => c.value === 'YouTube');
+  $('#ytFields').hidden = !(auto && ytChecked);
 }
 
 function syncWeekDays() {
@@ -547,6 +557,26 @@ async function openConnections() {
   $('#hCloudName').value = h.cloudName || '';
   $('#hUploadPreset').value = h.uploadPreset || '';
   updateHostingBadge(!!(h.cloudName && h.uploadPreset));
+  const yt = await window.api.getYoutube();
+  $('#ytClientId').value = yt.clientId || '';
+  $('#ytClientSecret').value = yt.clientSecret || '';
+  $('#ytResult').className = 'conn-result';
+  $('#ytResult').textContent = '';
+  updateYtBadge(yt.connected, yt.channel);
+  const th = await window.api.getThreads();
+  $('#thAppId').value = th.appId || '';
+  $('#thAppSecret').value = th.appSecret || '';
+  $('#thToken').value = th.token || '';
+  $('#thResult').className = 'conn-result';
+  $('#thResult').textContent = '';
+  updateBadge('#thStatus', th.connected);
+  const tt = await window.api.getTiktok();
+  $('#ttClientKey').value = tt.clientKey || '';
+  $('#ttClientSecret').value = tt.clientSecret || '';
+  $('#ttDirectPost').checked = !!tt.directPost;
+  $('#ttResult').className = 'conn-result';
+  $('#ttResult').textContent = '';
+  updateBadge('#ttStatus', tt.connected);
   const box = $('#connResult');
   box.className = 'conn-result';
   box.textContent = '';
@@ -618,13 +648,27 @@ async function upgradeToken() {
 }
 
 async function saveMeta() {
-  await window.api.saveMeta(readMetaForm());
+  const saveRes = await window.api.saveMeta(readMetaForm());
+  if (saveRes && saveRes.upgraded) {
+    const m = await window.api.getMeta(); // recargar el token permanente nuevo
+    $('#mPageToken').value = m.pageToken || '';
+  }
   const hosting = {
     cloudName: $('#hCloudName').value.trim(),
     uploadPreset: $('#hUploadPreset').value.trim(),
   };
   await window.api.saveHosting(hosting);
   updateHostingBadge(!!(hosting.cloudName && hosting.uploadPreset));
+  await window.api.saveYoutube({
+    clientId: $('#ytClientId').value.trim(),
+    clientSecret: $('#ytClientSecret').value.trim(),
+  });
+  await window.api.saveThreads(readThreadsForm());
+  await window.api.saveTiktok({
+    clientKey: $('#ttClientKey').value.trim(),
+    clientSecret: $('#ttClientSecret').value.trim(),
+    directPost: $('#ttDirectPost').checked,
+  });
   await testMeta();
 }
 
@@ -638,6 +682,118 @@ function updateHostingBadge(cloudinary) {
   const b = $('#hostingStatus');
   b.textContent = cloudinary ? 'Cloudinary' : 'Gratis';
   b.className = 'conn-badge' + (cloudinary ? ' ok' : '');
+}
+
+function updateYtBadge(connected, channel) {
+  const b = $('#ytStatus');
+  b.textContent = connected ? (channel ? channel : 'Conectado') : 'Sin conectar';
+  b.className = 'conn-badge' + (connected ? ' ok' : '');
+}
+
+async function connectYoutube() {
+  const box = $('#ytResult');
+  const clientId = $('#ytClientId').value.trim();
+  const clientSecret = $('#ytClientSecret').value.trim();
+  if (!clientId || !clientSecret) {
+    box.className = 'conn-result err';
+    box.textContent = 'Primero pegá el Client ID y el Client Secret de Google.';
+    return;
+  }
+  await window.api.saveYoutube({ clientId, clientSecret });
+  box.className = 'conn-result';
+  box.textContent = 'Abriendo el login de Google… autorizá en la ventana que apareció.';
+  const res = await window.api.connectYoutube({ clientId, clientSecret });
+  if (res.ok) {
+    box.className = 'conn-result ok';
+    box.textContent = '✅ YouTube conectado. Canal: ' + (res.channel || '(tu canal)');
+    updateYtBadge(true, res.channel);
+  } else {
+    box.className = 'conn-result err';
+    box.textContent = '❌ ' + res.error;
+  }
+}
+
+async function testYoutube() {
+  const box = $('#ytResult');
+  box.className = 'conn-result';
+  box.textContent = 'Probando…';
+  const res = await window.api.testYoutube();
+  if (res.ok) {
+    box.className = 'conn-result ok';
+    box.textContent = '✅ Conectado al canal: ' + res.channel;
+    updateYtBadge(true, res.channel);
+  } else {
+    box.className = 'conn-result err';
+    box.textContent = '❌ ' + res.error;
+  }
+}
+
+function updateBadge(sel, ok, text) {
+  const b = $(sel);
+  b.textContent = ok ? (text || 'Conectado') : 'Sin conectar';
+  b.className = 'conn-badge' + (ok ? ' ok' : '');
+}
+
+function readThreadsForm() {
+  return {
+    appId: $('#thAppId').value.trim(),
+    appSecret: $('#thAppSecret').value.trim(),
+    token: $('#thToken').value.trim(),
+  };
+}
+
+async function testThreads() {
+  const box = $('#thResult');
+  box.className = 'conn-result';
+  box.textContent = 'Probando…';
+  await window.api.saveThreads(readThreadsForm());
+  const res = await window.api.testThreads(readThreadsForm());
+  if (res.ok) {
+    box.className = 'conn-result ok';
+    box.textContent = '✅ Threads conectado: @' + res.username;
+    updateBadge('#thStatus', true);
+  } else {
+    box.className = 'conn-result err';
+    box.textContent = '❌ ' + res.error;
+  }
+}
+
+async function connectTiktok() {
+  const box = $('#ttResult');
+  const clientKey = $('#ttClientKey').value.trim();
+  const clientSecret = $('#ttClientSecret').value.trim();
+  if (!clientKey || !clientSecret) {
+    box.className = 'conn-result err';
+    box.textContent = 'Primero pegá el Client Key y Client Secret de TikTok.';
+    return;
+  }
+  await window.api.saveTiktok({ clientKey, clientSecret, directPost: $('#ttDirectPost').checked });
+  box.className = 'conn-result';
+  box.textContent = 'Abriendo el login de TikTok… autorizá en la ventana.';
+  const res = await window.api.connectTiktok({ clientKey, clientSecret });
+  if (res.ok) {
+    box.className = 'conn-result ok';
+    box.textContent = '✅ TikTok conectado.';
+    updateBadge('#ttStatus', true);
+  } else {
+    box.className = 'conn-result err';
+    box.textContent = '❌ ' + res.error;
+  }
+}
+
+async function testTiktok() {
+  const box = $('#ttResult');
+  box.className = 'conn-result';
+  box.textContent = 'Probando…';
+  const res = await window.api.testTiktok();
+  if (res.ok) {
+    box.className = 'conn-result ok';
+    box.textContent = '✅ TikTok conectado: ' + res.displayName;
+    updateBadge('#ttStatus', true);
+  } else {
+    box.className = 'conn-result err';
+    box.textContent = '❌ ' + res.error;
+  }
 }
 
 // --------------------------------------------------------------------------
@@ -660,6 +816,7 @@ function wire() {
   $('#fTemplate').onchange = (e) => { if (e.target.value) applyTemplate(e.target.value); };
   $$('input[name="ftype"]').forEach((r) => (r.onchange = () => { syncContentBlock(); syncAutoFields(); }));
   $$('input[name="pubmode"]').forEach((r) => (r.onchange = syncAutoFields));
+  $$('input[name="plat"]').forEach((c) => (c.onchange = syncAutoFields));
   $('#fStoryLink').onchange = syncStoryLink;
 
   // Conexiones
@@ -669,6 +826,11 @@ function wire() {
   $('#btnTestMeta').onclick = testMeta;
   $('#btnUpgradeToken').onclick = upgradeToken;
   $('#btnSaveMeta').onclick = saveMeta;
+  $('#btnConnectYoutube').onclick = connectYoutube;
+  $('#btnTestYoutube').onclick = testYoutube;
+  $('#btnTestThreads').onclick = testThreads;
+  $('#btnConnectTiktok').onclick = connectTiktok;
+  $('#btnTestTiktok').onclick = testTiktok;
 
   // Tabs
   $$('.tab').forEach((tab) => {

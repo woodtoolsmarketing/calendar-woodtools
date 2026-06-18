@@ -11,6 +11,9 @@ const Recurrence = require('./recurrence');
 const credentials = require('./credentials');
 const meta = require('./integrations/meta');
 const hosting = require('./integrations/hosting');
+const youtube = require('./integrations/youtube');
+const threads = require('./integrations/threads');
+const tiktok = require('./integrations/tiktok');
 
 const APP_ID = 'com.woodtools.calendario';
 const ICON_PATH = path.join(__dirname, 'assets', 'icon.png');
@@ -297,7 +300,20 @@ ipcMain.handle('notify:test', (_e, task) => {
 // IPC — Conexiones (credenciales de APIs)
 ipcMain.handle('connections:summary', () => credentials.summary());
 ipcMain.handle('connections:getMeta', () => credentials.getPlatform('meta') || {});
-ipcMain.handle('connections:saveMeta', (_e, data) => credentials.setPlatform('meta', data));
+ipcMain.handle('connections:saveMeta', async (_e, data) => {
+  credentials.setPlatform('meta', data);
+  // Best-effort: convertir el token a uno de Página permanente (no vence)
+  try {
+    if (data.appId && data.appSecret && data.pageToken && data.pageId) {
+      const r = await meta.makePermanent(data);
+      if (r.changed) {
+        credentials.setPlatform('meta', { ...data, pageToken: r.pageToken });
+        return { ok: true, upgraded: true };
+      }
+    }
+  } catch (_) { /* si no se pudo, queda el token tal cual */ }
+  return { ok: true, upgraded: false };
+});
 ipcMain.handle('connections:testMeta', (_e, creds) => meta.testConnection(creds));
 
 // Renueva el token de Facebook a larga duración (60 días, no vence) y lo guarda
@@ -313,6 +329,72 @@ ipcMain.handle('connections:upgradeMetaToken', async (_e, creds) => {
 });
 ipcMain.handle('connections:getHosting', () => credentials.getPlatform('hosting') || {});
 ipcMain.handle('connections:saveHosting', (_e, data) => credentials.setPlatform('hosting', data));
+
+// IPC — YouTube
+ipcMain.handle('connections:getYoutube', () => {
+  const y = credentials.getPlatform('youtube') || {};
+  return { clientId: y.clientId || '', clientSecret: y.clientSecret || '', channel: y.channel || '', connected: !!y.refreshToken };
+});
+ipcMain.handle('connections:saveYoutube', (_e, data) => {
+  const cur = credentials.getPlatform('youtube') || {};
+  credentials.setPlatform('youtube', { ...cur, ...data });
+  return true;
+});
+ipcMain.handle('connections:connectYoutube', async (_e, data) => {
+  try {
+    const cur = credentials.getPlatform('youtube') || {};
+    const creds = { ...cur, clientId: data.clientId, clientSecret: data.clientSecret };
+    const r = await youtube.connect(creds);
+    credentials.setPlatform('youtube', { ...creds, refreshToken: r.refreshToken, channel: r.channel });
+    return { ok: true, channel: r.channel };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+ipcMain.handle('connections:testYoutube', async () => {
+  const creds = credentials.getPlatform('youtube');
+  if (!creds || !creds.refreshToken) return { ok: false, error: 'YouTube no está conectado.' };
+  return youtube.testConnection(creds);
+});
+
+// IPC — Threads
+ipcMain.handle('connections:getThreads', () => {
+  const t = credentials.getPlatform('threads') || {};
+  return { appId: t.appId || '', appSecret: t.appSecret || '', token: t.token || '', userId: t.userId || '', connected: !!t.token };
+});
+ipcMain.handle('connections:saveThreads', (_e, data) => {
+  const cur = credentials.getPlatform('threads') || {};
+  credentials.setPlatform('threads', { ...cur, ...data });
+  return true;
+});
+ipcMain.handle('connections:testThreads', async (_e, creds) => threads.testConnection(creds || credentials.getPlatform('threads')));
+
+// IPC — TikTok
+ipcMain.handle('connections:getTiktok', () => {
+  const t = credentials.getPlatform('tiktok') || {};
+  return { clientKey: t.clientKey || '', clientSecret: t.clientSecret || '', directPost: !!t.directPost, connected: !!t.accessToken };
+});
+ipcMain.handle('connections:saveTiktok', (_e, data) => {
+  const cur = credentials.getPlatform('tiktok') || {};
+  credentials.setPlatform('tiktok', { ...cur, ...data });
+  return true;
+});
+ipcMain.handle('connections:connectTiktok', async (_e, data) => {
+  try {
+    const cur = credentials.getPlatform('tiktok') || {};
+    const creds = { ...cur, clientKey: data.clientKey, clientSecret: data.clientSecret };
+    const r = await tiktok.connect(creds);
+    credentials.setPlatform('tiktok', { ...creds, accessToken: r.accessToken, refreshToken: r.refreshToken, openId: r.openId });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+ipcMain.handle('connections:testTiktok', async () => {
+  const creds = credentials.getPlatform('tiktok');
+  if (!creds || !creds.accessToken) return { ok: false, error: 'TikTok no está conectado.' };
+  return tiktok.testConnection(creds);
+});
 
 // IPC — elegir archivo local (imagen/video) y guardarlo en la app
 ipcMain.handle('media:pick', async () => {
@@ -340,11 +422,8 @@ ipcMain.handle('media:pick', async () => {
 
 // IPC — publicar una tarea de contenido ahora mismo (botón manual)
 ipcMain.handle('content:publishNow', async (_e, task) => {
-  const creds = credentials.getPlatform('meta');
-  if (!creds) return [{ error: 'No hay conexión de Meta configurada.' }];
   try {
-    await resolveMediaUrl(task);
-    const results = await meta.publishForTask(creds, task);
+    const results = await dispatchPublish(task);
     const ok = !results.some((r) => r.error);
     if (ok) {
       const data = store.read();
@@ -423,15 +502,39 @@ async function resolveMediaUrl(task) {
   return task;
 }
 
-async function attemptPublish(task, instance) {
-  const creds = credentials.getPlatform('meta');
-  if (!creds) {
-    notifyPublishError(task, 'No hay conexión de Meta configurada. Entrá a Conexiones y conectá tu cuenta.');
-    return;
-  }
-  try {
+// Rutea cada red social a su módulo (Meta / YouTube / TikTok)
+async function dispatchPublish(task) {
+  const platforms = task.platforms || [];
+  const results = [];
+
+  // Instagram / Facebook / Threads necesitan una URL pública → subimos el archivo una vez
+  if (platforms.some((p) => ['Instagram', 'Facebook', 'Threads'].includes(p))) {
     await resolveMediaUrl(task);
-    const results = await meta.publishForTask(creds, task);
+  }
+
+  const metaPlats = platforms.filter((p) => ['Instagram', 'Facebook'].includes(p));
+  if (metaPlats.length) {
+    const metaCreds = credentials.getPlatform('meta');
+    if (!metaCreds) results.push({ platform: metaPlats.join('/'), error: 'No hay conexión de Meta configurada.' });
+    else results.push(...await meta.publishForTask(metaCreds, { ...task, platforms: metaPlats }));
+  }
+
+  if (platforms.includes('Threads')) {
+    results.push(await threads.publishForTask(credentials.getPlatform('threads'), task));
+  }
+  if (platforms.includes('YouTube')) {
+    results.push(await youtube.publishForTask(credentials.getPlatform('youtube'), task));
+  }
+  if (platforms.includes('TikTok')) {
+    results.push(await tiktok.publishForTask(credentials.getPlatform('tiktok'), task));
+  }
+
+  return results;
+}
+
+async function attemptPublish(task, instance) {
+  try {
+    const results = await dispatchPublish(task);
     const errors = results.filter((r) => r.error);
     if (errors.length) {
       notifyPublishError(task, errors.map((e) => e.platform + ': ' + e.error).join(' · '));

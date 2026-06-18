@@ -4,12 +4,21 @@
  * Sirve para YouTube (Google) y TikTok. Devuelve { code, redirectUri }.
  */
 const http = require('http');
+const crypto = require('crypto');
 const { BrowserWindow } = require('electron');
 
-function authorizeLoopback({ authBaseUrl, clientId, scope, extraAuthParams = {} }) {
+function pkcePair() {
+  const verifier = crypto.randomBytes(48).toString('base64url');
+  const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
+  return { verifier, challenge };
+}
+
+// opts: { authBaseUrl, clientId, clientParam='client_id', scope, extraAuthParams, pkce=false, fixedPort=0, redirectPath='' }
+function authorizeLoopback({ authBaseUrl, clientId, clientParam = 'client_id', scope, extraAuthParams = {}, pkce = false, fixedPort = 0, redirectPath = '' }) {
   return new Promise((resolve, reject) => {
     let settled = false;
     let win = null;
+    const pk = pkce ? pkcePair() : null;
 
     const server = http.createServer((req, res) => {
       const u = new URL(req.url, 'http://127.0.0.1');
@@ -20,20 +29,25 @@ function authorizeLoopback({ authBaseUrl, clientId, scope, extraAuthParams = {} 
       if (settled) return;
       settled = true;
       setTimeout(() => { try { if (win && !win.isDestroyed()) win.close(); } catch (_) {} server.close(); }, 400);
-      if (code) resolve({ code, redirectUri: `http://127.0.0.1:${server.address().port}` });
+      if (code) resolve({ code, redirectUri: `http://127.0.0.1:${server.address().port}${redirectPath}`, codeVerifier: pk ? pk.verifier : null });
       else reject(new Error(error || 'No se recibió el código de autorización.'));
     });
 
     server.on('error', (e) => { if (!settled) { settled = true; reject(e); } });
 
-    server.listen(0, '127.0.0.1', () => {
+    server.listen(fixedPort, '127.0.0.1', () => {
       const port = server.address().port;
-      const redirectUri = `http://127.0.0.1:${port}`;
+      const redirectUri = `http://127.0.0.1:${port}${redirectPath}`;
       const authUrl = new URL(authBaseUrl);
-      authUrl.searchParams.set('client_id', clientId);
+      authUrl.searchParams.set(clientParam, clientId);
       authUrl.searchParams.set('redirect_uri', redirectUri);
       authUrl.searchParams.set('response_type', 'code');
       authUrl.searchParams.set('scope', scope);
+      authUrl.searchParams.set('state', crypto.randomBytes(8).toString('hex'));
+      if (pk) {
+        authUrl.searchParams.set('code_challenge', pk.challenge);
+        authUrl.searchParams.set('code_challenge_method', 'S256');
+      }
       for (const [k, v] of Object.entries(extraAuthParams)) authUrl.searchParams.set(k, v);
 
       win = new BrowserWindow({

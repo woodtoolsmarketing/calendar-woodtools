@@ -17,16 +17,28 @@
       "preload.js",
       "store.js",
       "recurrence.js",
+      "credentials.js",
       "alert.html",
       "src/**/*",
+      "integrations/**/*",
+      "assets/**/*",
       "node_modules/fullcalendar/**/*"
     ],
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Calendario WoodTools"
     }
   },
   "devDependencies": {
-    "electron": "^42.4.0"
+    "electron": "^42.4.0",
+    "electron-builder": "^26.15.3"
   },
   "dependencies": {
     "fullcalendar": "^6.1.20"
