@@ -11,6 +11,7 @@ let calendar = null;
 let editing = null;        // tarea en edición (o null si es nueva)
 let editingOccKey = null;  // ocurrencia puntual seleccionada
 let selectedMedia = null;  // { path, name } del archivo elegido
+let selectedThumb = null;  // { path, name } de la miniatura/portada
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -145,6 +146,7 @@ function openForm({ date, end, task = null, occKey = null }) {
     $('#fYtTitle').value = task.ytTitle || '';
     $('#fYtDescription').value = task.ytDescription || '';
     selectedMedia = task.mediaPath ? { path: task.mediaPath, name: task.mediaName || 'archivo' } : null;
+    selectedThumb = task.thumbPath ? { path: task.thumbPath, name: task.thumbName || 'miniatura' } : null;
     $('#fStoryLink').checked = false;
     $('#fSaveTemplate').checked = false;
   } else {
@@ -170,6 +172,7 @@ function openForm({ date, end, task = null, occKey = null }) {
     $('#fYtTitle').value = '';
     $('#fYtDescription').value = '';
     selectedMedia = null;
+    selectedThumb = null;
     $('#fStoryLink').checked = false;
     $('#fSaveTemplate').checked = false;
   }
@@ -179,6 +182,7 @@ function openForm({ date, end, task = null, occKey = null }) {
   syncAutoFields();
   syncWeekDays();
   renderMediaName();
+  renderThumbName();
   $('#btnDelete').hidden = !task;
   $('#btnDone').hidden = !task;
   $('#btnReschedule').hidden = !task;
@@ -234,6 +238,13 @@ function readForm() {
       delete task.mediaPath;
       delete task.mediaName;
     }
+    if (selectedThumb) {
+      task.thumbPath = selectedThumb.path;
+      task.thumbName = selectedThumb.name;
+    } else {
+      delete task.thumbPath;
+      delete task.thumbName;
+    }
   } else {
     delete task.platforms;
     delete task.contentType;
@@ -245,6 +256,8 @@ function readForm() {
     delete task.ytDescription;
     delete task.mediaPath;
     delete task.mediaName;
+    delete task.thumbPath;
+    delete task.thumbName;
   }
   // Reprogramar limpia los disparos previos
   task.firedKeys = [];
@@ -516,6 +529,33 @@ async function pickMedia() {
 function clearMedia() {
   selectedMedia = null;
   renderMediaName();
+}
+
+function renderThumbName() {
+  const label = $('#thumbFileName');
+  const clearBtn = $('#btnClearThumb');
+  if (selectedThumb && selectedThumb.name) {
+    label.textContent = selectedThumb.name;
+    label.classList.add('has-file');
+    clearBtn.hidden = false;
+  } else {
+    label.textContent = 'Ninguna';
+    label.classList.remove('has-file');
+    clearBtn.hidden = true;
+  }
+}
+
+async function pickThumb() {
+  const res = await window.api.pickMedia();
+  if (!res) return;
+  if (res.error) { alert('No se pudo cargar la miniatura: ' + res.error); return; }
+  selectedThumb = { path: res.path, name: res.name };
+  renderThumbName();
+}
+
+function clearThumb() {
+  selectedThumb = null;
+  renderThumbName();
 }
 
 // --------------------------------------------------------------------------
@@ -811,6 +851,8 @@ function wire() {
   $('#btnPublishNow').onclick = publishNow;
   $('#btnPickMedia').onclick = pickMedia;
   $('#btnClearMedia').onclick = clearMedia;
+  $('#btnPickThumb').onclick = pickThumb;
+  $('#btnClearThumb').onclick = clearThumb;
   $('#fRecur').onchange = syncWeekDays;
   $('#fWeekdaysOnly').onchange = (e) => { if (e.target.checked) applyWeekdaysOnly(); };
   $('#fTemplate').onchange = (e) => { if (e.target.value) applyTemplate(e.target.value); };

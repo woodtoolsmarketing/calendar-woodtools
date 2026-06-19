@@ -82,8 +82,22 @@ async function testConnection(creds) {
   }
 }
 
+// Sube una miniatura personalizada a un video ya subido (requiere canal verificado)
+async function setThumbnail(accessToken, videoId, thumbPath) {
+  const buf = fs.readFileSync(thumbPath);
+  const ct = /\.png$/i.test(thumbPath) ? 'image/png' : 'image/jpeg';
+  const res = await fetch('https://www.googleapis.com/upload/youtube/v3/thumbnails/set?videoId=' + videoId, {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': ct, 'Content-Length': String(buf.length) },
+    body: buf,
+  });
+  const json = await res.json().catch(() => ({}));
+  if (json.error) throw new Error(json.error.message);
+  return true;
+}
+
 // --- Subir un video (resumable upload) ---
-async function uploadVideo(creds, { filePath, title, description, publishAtISO, tags }) {
+async function uploadVideo(creds, { filePath, title, description, publishAtISO, tags, thumbPath }) {
   if (!filePath || !fs.existsSync(filePath)) {
     throw new Error('YouTube: necesito un archivo de video (MP4). Elegí el archivo en la tarea.');
   }
@@ -122,6 +136,11 @@ async function uploadVideo(creds, { filePath, title, description, publishAtISO, 
   });
   const upJson = await up.json();
   if (upJson.error) throw new Error('YouTube: ' + upJson.error.message);
+  // Miniatura personalizada (best-effort: si el canal no está verificado por teléfono, falla sin romper la subida)
+  if (thumbPath && upJson.id) {
+    try { await setThumbnail(accessToken, upJson.id, thumbPath); }
+    catch (e) { console.error('[youtube] no se pudo poner la miniatura:', e.message); }
+  }
   return { platform: 'YouTube', id: upJson.id, raw: upJson };
 }
 
@@ -140,9 +159,10 @@ async function publishForTask(creds, task) {
 
     return await uploadVideo(creds, {
       filePath: task.mediaPath,
-      title: isShort && !/#shorts/i.test(title) ? title : title,
+      title,
       description: fullDesc,
       publishAtISO,
+      thumbPath: task.thumbPath,
     });
   } catch (e) {
     return { platform: 'YouTube', error: e.message };

@@ -10,6 +10,8 @@ build/
 *.log
 electron-test*.log
 connections.dat
+connections.json
+connections.bak.json
 calendario-data.json
 
 # Sistema

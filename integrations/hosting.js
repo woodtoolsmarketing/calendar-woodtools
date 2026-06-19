@@ -17,6 +17,7 @@ function isVideo(filePath) {
 }
 
 async function uploadPublic(filePath, hostingCreds) {
+  console.log('[DEBUG hosting] creds recibidas:', JSON.stringify(hostingCreds), '| usa Cloudinary:', !!(hostingCreds && hostingCreds.cloudName && hostingCreds.uploadPreset));
   if (!filePath || !fs.existsSync(filePath)) {
     throw new Error('No encuentro el archivo: ' + filePath);
   }

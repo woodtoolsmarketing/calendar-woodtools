@@ -202,6 +202,15 @@
               </div>
               <small class="hint">La app lo sube sola para Instagram. JPG o MP4 (Instagram pide <strong>JPG</strong> para fotos, no PNG).</small>
             </div>
+            <div class="field">
+              <label>Miniatura / Portada del video (opcional)</label>
+              <div class="file-row">
+                <button type="button" id="btnPickThumb" class="btn-ghost">🖼️ Elegir miniatura…</button>
+                <span id="thumbFileName" class="file-name">Ninguna</span>
+                <button type="button" id="btnClearThumb" class="icon-btn" title="Quitar miniatura" hidden>✕</button>
+              </div>
+              <small class="hint">JPG o PNG. Se usa en YouTube (miniatura), Reels de Instagram y videos de Facebook (portada).</small>
+            </div>
             <details class="url-advanced">
               <summary>o pegar una URL pública (avanzado)</summary>
               <input id="fMediaUrl" type="url" placeholder="https://.../reel.mp4" autocomplete="off" />

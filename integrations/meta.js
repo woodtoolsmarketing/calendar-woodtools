@@ -8,6 +8,9 @@
  * NOTA Instagram: las imágenes/videos deben estar en una URL PÚBLICA accesible
  * (image_url / video_url). No se pueden subir archivos locales directos.
  */
+const fs = require('fs');
+const path = require('path');
+
 const GRAPH = 'https://graph.facebook.com/v21.0';
 
 async function graphGet(pathStr, token, fields) {
@@ -166,12 +169,13 @@ async function publishFacebook(creds, content) {
                    : publishFbPhotoStory(pageId, token, content.mediaUrl);
   }
 
-  let endpoint, body = {};
+  // Video de Facebook (con miniatura/portada si hay)
   if (isVideo) {
-    endpoint = `${pageId}/videos`;
-    body.file_url = content.mediaUrl;
-    body.description = content.message || '';
-  } else if (isPhoto) {
+    return publishFbVideo(pageId, token, content.mediaUrl, content.message || '', content.thumbPath);
+  }
+
+  let endpoint, body = {};
+  if (isPhoto) {
     endpoint = `${pageId}/photos`;
     body.url = content.mediaUrl;
     body.caption = content.message || '';
@@ -192,6 +196,22 @@ async function publishFacebook(creds, content) {
 
   const res = await graphPost(endpoint, body, token);
   return { platform: 'Facebook', id: res.id || res.post_id, raw: res };
+}
+
+// Video de Facebook con miniatura opcional (multipart: file_url + thumb)
+async function publishFbVideo(pageId, token, videoUrl, description, thumbPath) {
+  const form = new FormData();
+  form.append('access_token', token);
+  form.append('file_url', videoUrl);
+  if (description) form.append('description', description);
+  if (thumbPath && fs.existsSync(thumbPath)) {
+    const buf = fs.readFileSync(thumbPath);
+    form.append('thumb', new Blob([buf]), path.basename(thumbPath));
+  }
+  const res = await fetch(`${GRAPH}/${pageId}/videos`, { method: 'POST', body: form });
+  const json = await res.json();
+  if (json.error) throw new Error(json.error.message || JSON.stringify(json.error));
+  return { platform: 'Facebook', id: json.id, raw: json };
 }
 
 // Historia de foto: subir foto sin publicar y luego crear la historia
@@ -240,6 +260,7 @@ async function publishInstagram(creds, content) {
     params.media_type = 'REELS';
     params.video_url = content.mediaUrl;
     params.caption = content.caption || '';
+    if (content.coverUrl) params.cover_url = content.coverUrl; // portada del reel
   } else if (content.format === 'story') {
     params.media_type = 'STORIES';
     if (isVideo) params.video_url = content.mediaUrl;
@@ -326,6 +347,7 @@ async function publishInstagramLogin(creds, content) {
     params.media_type = 'REELS';
     params.video_url = content.mediaUrl;
     params.caption = content.caption || '';
+    if (content.coverUrl) params.cover_url = content.coverUrl; // portada del reel
   } else if (content.format === 'story') {
     params.media_type = 'STORIES';
     if (isVideo) params.video_url = content.mediaUrl;
@@ -379,7 +401,7 @@ async function publishForTask(creds, task) {
   for (const plat of task.platforms || []) {
     try {
       if (plat === 'Instagram') {
-        const igContent = { format: igFormatFromTask(task), mediaUrl: task.mediaUrl, caption };
+        const igContent = { format: igFormatFromTask(task), mediaUrl: task.mediaUrl, caption, coverUrl: task.thumbUrl };
         // Si hay token de Instagram (método nuevo) lo usamos; si no, el método clásico
         if (creds.igToken) {
           results.push(await publishInstagramLogin(creds, igContent));
@@ -392,6 +414,7 @@ async function publishForTask(creds, task) {
           message: caption,
           link: task.link,
           mediaUrl: task.mediaUrl,
+          thumbPath: task.thumbPath,
         }));
       } else {
         results.push({ platform: plat, skipped: true, error: 'Integración aún no implementada (' + plat + ').' });

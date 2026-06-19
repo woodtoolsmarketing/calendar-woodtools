@@ -495,9 +495,13 @@ function broadcastChanged() {
 // ----------------------------------------------------------------------------
 // Si la tarea tiene un archivo local, lo sube a una URL pública (Instagram la exige)
 async function resolveMediaUrl(task) {
+  const hostCreds = credentials.getPlatform('hosting');
   if (task.mediaPath && !task.mediaUrl) {
-    const hostCreds = credentials.getPlatform('hosting');
     task.mediaUrl = await hosting.uploadPublic(task.mediaPath, hostCreds);
+  }
+  // Miniatura/portada a URL pública (para portada de Reel de IG y video de FB)
+  if (task.thumbPath && !task.thumbUrl) {
+    task.thumbUrl = await hosting.uploadPublic(task.thumbPath, hostCreds);
   }
   return task;
 }
