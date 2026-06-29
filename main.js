@@ -18,6 +18,31 @@ const tiktok = require('./integrations/tiktok');
 const APP_ID = 'com.woodtools.calendario';
 const ICON_PATH = path.join(__dirname, 'assets', 'icon.png');
 
+// Si arranca con Windows, lo hace oculto (directo a la bandeja, sin abrir la ventana)
+const START_HIDDEN = process.argv.includes('--hidden');
+
+// Activa/desactiva el inicio automático con Windows
+function setAutoStart(enabled) {
+  try {
+    if (app.isPackaged) {
+      app.setLoginItemSettings({ openAtLogin: enabled, args: ['--hidden'] });
+    } else {
+      // En modo desarrollo (electron .) hay que pasar la ruta del proyecto
+      app.setLoginItemSettings({
+        openAtLogin: enabled,
+        path: process.execPath,
+        args: [path.resolve(__dirname), '--hidden'],
+      });
+    }
+  } catch (e) {
+    console.error('[autostart] error:', e.message);
+  }
+}
+
+function isAutoStartOn() {
+  try { return app.getLoginItemSettings().openAtLogin; } catch (_) { return false; }
+}
+
 let mainWindow = null;
 let tray = null;
 let isQuitting = false;
@@ -47,6 +72,7 @@ function createMainWindow() {
     title: 'Calendario WoodTools',
     icon: ICON_PATH,
     backgroundColor: '#14161c',
+    show: !START_HIDDEN, // si arrancó con Windows, queda en la bandeja sin abrir
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -87,13 +113,25 @@ function createTray() {
   }
   tray = new Tray(icon);
   tray.setToolTip('Calendario WoodTools');
+  refreshTrayMenu();
+  tray.on('double-click', () => showMainWindow());
+}
+
+function refreshTrayMenu() {
+  if (!tray) return;
   const menu = Menu.buildFromTemplate([
     { label: 'Abrir calendario', click: () => showMainWindow() },
+    { type: 'separator' },
+    {
+      label: 'Iniciar con Windows',
+      type: 'checkbox',
+      checked: isAutoStartOn(),
+      click: (item) => { setAutoStart(item.checked); refreshTrayMenu(); },
+    },
     { type: 'separator' },
     { label: 'Salir', click: () => { isQuitting = true; app.quit(); } },
   ]);
   tray.setContextMenu(menu);
-  tray.on('double-click', () => showMainWindow());
 }
 
 // ----------------------------------------------------------------------------
@@ -588,6 +626,16 @@ function notifyPublishError(task, msg) {
 // ----------------------------------------------------------------------------
 app.whenReady().then(() => {
   app.setAppUserModelId(APP_ID);
+
+  // Activar el inicio con Windows por defecto la primera vez (después se puede apagar desde la bandeja)
+  try {
+    const marker = path.join(app.getPath('userData'), '.autostart-set');
+    if (!fs.existsSync(marker)) {
+      setAutoStart(true);
+      fs.writeFileSync(marker, '1');
+    }
+  } catch (_) {}
+
   createMainWindow();
   createTray();
 
