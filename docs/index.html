@@ -3,43 +3,354 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Calendario WoodTools — Programá tu contenido</title>
+  <title>Calendario WoodTools — Planificá y publicá el contenido de WoodTools</title>
+  <meta name="description" content="Calendario WoodTools es la aplicación de escritorio de WoodTools para planificar tareas y programar publicaciones en las cuentas oficiales de la marca en Facebook, Instagram, Threads, YouTube y TikTok." />
+  <link rel="icon" type="image/png" href="icon.png" />
   <style>
-    body { font-family: -apple-system, "Segoe UI", system-ui, sans-serif; margin: 0; color: #1a1a1a; line-height: 1.6; }
-    .hero { background: linear-gradient(135deg, #E84A6F, #B87333); color: #fff; padding: 70px 20px; text-align: center; }
-    .hero h1 { font-size: 40px; margin: 0 0 12px; }
-    .hero p { font-size: 18px; max-width: 600px; margin: 0 auto; opacity: .95; }
-    .wrap { max-width: 820px; margin: 40px auto; padding: 0 20px; }
-    h2 { font-size: 24px; }
-    .feat { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; margin: 24px 0; }
-    .card { background: #f7f7f8; border-radius: 12px; padding: 18px; }
-    footer { text-align: center; padding: 30px; color: #666; border-top: 1px solid #eee; }
-    a { color: #1a73e8; }
+    :root { --pink: #E84A6F; --pink-ink: #B3375A; --copper: #B87333; --teal: #1F9E91; --ink: #1d1f24; --muted: #5a6070; --line: #e6e4e1; --soft: #f8f6f3; --bg: #ffffff; }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font-family: "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 16px; line-height: 1.65; }
+    img { max-width: 100%; height: auto; }
+    a { color: var(--pink-ink); text-underline-offset: 2px; overflow-wrap: anywhere; }
+    a:hover { color: var(--pink); }
+    h1, h2, h3 { line-height: 1.25; }
+    code { font-family: Consolas, "Cascadia Mono", Menlo, monospace; font-size: .88em; background: #f1efec; padding: 1px 6px; border-radius: 4px; overflow-wrap: anywhere; }
+    .container { max-width: 1080px; margin: 0 auto; padding-inline: 20px; }
+    .skip { position: absolute; left: -9999px; }
+    .skip:focus { left: 16px; top: 8px; z-index: 20; background: #fff; padding: 6px 10px; }
+    /* Encabezado y pie */
+    .site-header { background: #fff; border-bottom: 1px solid var(--line); }
+    .site-header .container { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 28px; padding-block: 12px; }
+    .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); font-weight: 700; font-size: 17px; text-decoration: none; }
+    .brand img { width: 36px; height: 36px; border-radius: 9px; }
+    .nav { display: flex; flex-wrap: wrap; gap: 4px 20px; font-size: 15px; }
+    .nav a { color: var(--muted); text-decoration: none; padding: 3px 0; border-bottom: 2px solid transparent; }
+    .nav a:hover { color: var(--ink); }
+    .nav a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--pink); }
+    .site-footer { margin-top: 72px; background: var(--soft); border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+    .site-footer .container { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 28px; padding-block: 26px; }
+    .site-footer p { margin: 0; }
+    /* Cabecera de páginas legales */
+    .page-head { background: linear-gradient(135deg, var(--pink) 0%, var(--copper) 100%); color: #fff; }
+    .page-head .container { padding-block: 44px 38px; }
+    .page-head h1 { margin: 0 0 8px; font-size: clamp(28px, 5vw, 40px); }
+    .page-head p { margin: 0; max-width: 680px; opacity: .96; }
+    /* Documentos */
+    .doc { max-width: 800px; }
+    .doc h2 { font-size: 22px; margin: 44px 0 10px; }
+    .doc h3 { font-size: 17px; margin: 26px 0 6px; }
+    .doc li { margin: 4px 0; }
+    .toc { margin-top: 32px; padding: 16px 22px; background: var(--soft); border: 1px solid var(--line); border-radius: 12px; }
+    .toc strong { display: block; margin-bottom: 4px; }
+    .toc ol { margin: 0; padding-left: 20px; columns: 2 240px; column-gap: 32px; }
+    .note { margin: 18px 0; padding: 12px 16px; background: #eef7f5; border-left: 4px solid var(--teal); border-radius: 0 10px 10px 0; }
+    .table-wrap { overflow-x: auto; margin: 14px 0; border: 1px solid var(--line); border-radius: 10px; }
+    table { width: 100%; min-width: 620px; border-collapse: collapse; font-size: 15px; }
+    th, td { padding: 10px 14px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+    tr:last-child td { border-bottom: 0; }
+    th { background: var(--soft); font-weight: 600; }
+    .updated { color: var(--muted); font-size: 14px; margin-top: 28px; }
+    /* Portada */
+    .hero { background: linear-gradient(135deg, var(--pink) 0%, var(--copper) 100%); color: #fff; }
+    .hero .container { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: 40px; align-items: center; padding-block: 64px; }
+    .hero h1 { margin: 14px 0 14px; font-size: clamp(34px, 6vw, 52px); letter-spacing: -.5px; }
+    .hero .lead { font-size: 19px; margin: 0 0 26px; max-width: 560px; }
+    .hero-logo { width: 72px; height: 72px; border-radius: 18px; box-shadow: 0 6px 18px rgba(0, 0, 0, .18); }
+    .actions { display: flex; flex-wrap: wrap; gap: 12px; }
+    .btn { display: inline-block; padding: 11px 20px; border-radius: 999px; font-weight: 600; text-decoration: none; }
+    .btn-light { background: #fff; color: var(--pink-ink); }
+    .btn-light:hover { color: var(--pink); }
+    .btn-outline { border: 2px solid rgba(255, 255, 255, .85); color: #fff; }
+    .btn-outline:hover { background: rgba(255, 255, 255, .14); color: #fff; }
+    .mock { background: #fff; color: var(--ink); border-radius: 16px; box-shadow: 0 18px 40px rgba(60, 20, 20, .28); overflow: hidden; }
+    .mock-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); font-size: 14px; }
+    .mock-bar span { color: var(--muted); }
+    .mock-list { list-style: none; margin: 0; padding: 10px; display: grid; gap: 8px; }
+    .mock-list li { padding: 10px 12px; border-radius: 10px; background: var(--soft); border-left: 5px solid var(--teal); font-size: 14px; line-height: 1.4; }
+    .mock-list b { display: block; font-size: 15px; }
+    .mock-list small { color: var(--muted); }
+    .mock-list .lvl-t { border-left-color: var(--pink); }
+    .mock-list .lvl-p { border-left-color: var(--copper); }
+    .mock-cap { margin: 0; padding: 4px 16px 12px; font-size: 12px; color: var(--muted); }
+    .section { padding-top: 64px; }
+    .section h2 { font-size: clamp(24px, 3.4vw, 32px); margin: 0 0 10px; }
+    .intro { max-width: 760px; color: var(--muted); font-size: 17px; margin: 0 0 28px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 18px; }
+    .card { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; }
+    .card h3 { margin: 0 0 6px; font-size: 18px; }
+    .card p { margin: 0; color: var(--muted); }
+    .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 14px; }
+    .fact { padding: 16px 18px; border-radius: 12px; background: var(--soft); color: var(--muted); }
+    .fact strong { display: block; font-size: 17px; color: var(--ink); }
+    .steps { list-style: none; margin: 0; padding: 0; counter-reset: paso; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 18px; }
+    .steps li { counter-increment: paso; position: relative; padding: 58px 20px 20px; background: var(--soft); border-radius: 14px; }
+    .steps li::before { content: counter(paso); position: absolute; top: 16px; left: 20px; width: 30px; height: 30px; border-radius: 50%; background: var(--pink); color: #fff; font-weight: 700; display: grid; place-items: center; }
+    .steps h3 { margin: 0 0 6px; font-size: 17px; }
+    .steps p { margin: 0; color: var(--muted); }
+    .levels { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 14px; }
+    .level { padding: 16px 18px; border-radius: 12px; border: 1px solid var(--line); border-top: 5px solid var(--teal); }
+    .level h3 { margin: 0 0 4px; font-size: 17px; }
+    .level p { margin: 0; color: var(--muted); }
+    .level-t { border-top-color: var(--pink); }
+    .level-p { border-top-color: var(--copper); }
+    .platform { display: flex; flex-direction: column; gap: 10px; }
+    .platform p { color: var(--muted); }
+    .label { display: block; font-size: 12px; font-weight: 600; letter-spacing: .4px; text-transform: uppercase; color: var(--muted); }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chips code { font-size: 12.5px; }
+    .split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; }
+    .panel { background: var(--soft); border-radius: 16px; padding: 22px 26px; }
+    .panel h3 { margin: 0 0 8px; font-size: 19px; }
+    .checklist { list-style: none; padding: 0; margin: 0; }
+    .checklist li { position: relative; padding-left: 26px; margin: 8px 0; }
+    .checklist li::before { content: ""; position: absolute; left: 4px; top: .5em; width: 11px; height: 6px; border-left: 2px solid var(--teal); border-bottom: 2px solid var(--teal); transform: rotate(-45deg); }
+    .disclaimer { font-size: 14px; color: var(--muted); }
+    @media (max-width: 820px) {
+      .hero .container, .split { grid-template-columns: minmax(0, 1fr); }
+      .hero .container { padding-block: 44px; gap: 28px; }
+    }
   </style>
 </head>
 <body>
-  <div class="hero">
-    <h1>Calendario WoodTools</h1>
-    <p>Una app de escritorio para organizar tus tareas y programar la publicación de contenido en tus redes sociales.</p>
-  </div>
-  <div class="wrap">
-    <h2>¿Qué hace?</h2>
-    <p>Calendario WoodTools te permite planificar y publicar contenido (videos, fotos e historias) en tus propias cuentas de TikTok, Instagram, Facebook, Threads y YouTube, desde un calendario visual estilo Google Calendar, con recordatorios y niveles de importancia.</p>
-    <div class="feat">
-      <div class="card"><strong>📅 Calendario</strong><br />Vistas por mes, semana y día.</div>
-      <div class="card"><strong>🔔 Recordatorios</strong><br />Avisos según la importancia de cada tarea.</div>
-      <div class="card"><strong>📲 Programación</strong><br />Publicá en tus redes de forma automática.</div>
-      <div class="card"><strong>🔒 Privado</strong><br />Tus datos y credenciales se guardan cifrados en tu PC.</div>
+  <a class="skip" href="#contenido">Saltar al contenido</a>
+  <header class="site-header">
+    <div class="container">
+      <a class="brand" href="index.html"><img src="icon.png" alt="" width="36" height="36" />Calendario WoodTools</a>
+      <nav class="nav" aria-label="Principal">
+        <a href="index.html" aria-current="page">Inicio</a>
+        <a href="privacy.html">Política de privacidad</a>
+        <a href="terms.html">Términos</a>
+        <a href="data-deletion.html">Eliminación de datos</a>
+      </nav>
     </div>
-    <h2>Integración con TikTok</h2>
-    <p>La app usa la <em>Content Posting API</em> y el <em>Login Kit</em> de TikTok para que el usuario pueda subir sus videos a su propia cuenta de TikTok directamente desde el programa.</p>
-    <p>
-      <a href="privacy.html">Política de Privacidad</a> ·
-      <a href="terms.html">Términos de Servicio</a>
-    </p>
-  </div>
-  <footer>
-    Calendario WoodTools · Contacto: <a href="mailto:woodtoolsmarketing@gmail.com">woodtoolsmarketing@gmail.com</a>
+  </header>
+
+  <main id="contenido">
+    <section class="hero">
+      <div class="container">
+        <div>
+          <img class="hero-logo" src="icon.png" alt="Ícono de Calendario WoodTools" width="72" height="72" />
+          <h1>Calendario WoodTools</h1>
+          <p class="lead">La aplicación de escritorio de WoodTools para planificar tareas y programar la publicación de contenido en las cuentas oficiales de la marca en Facebook, Instagram, Threads, YouTube y TikTok.</p>
+          <div class="actions">
+            <a class="btn btn-light" href="#como-funciona">Cómo funciona</a>
+            <a class="btn btn-outline" href="#datos">Datos y privacidad</a>
+          </div>
+        </div>
+        <div class="mock" role="img" aria-label="Vista ilustrativa de las tareas programadas de una semana en Calendario WoodTools">
+          <div class="mock-bar"><strong>Esta semana</strong><span>Mes · Semana · Día · Lista</span></div>
+          <ul class="mock-list">
+            <li class="lvl-t"><b>Lun 10:00 · Reel de producto</b><small>Instagram · Facebook · Publicar automático</small></li>
+            <li><b>Mié 18:30 · Video del canal</b><small>YouTube · Público · Publicar automático</small></li>
+            <li><b>Jue 12:00 · Video corto</b><small>TikTok · Threads · Publicar automático</small></li>
+            <li class="lvl-p"><b>Vie 09:00 · Planificar publicaciones del mes</b><small>Tarea interna · Prescindible</small></li>
+          </ul>
+          <p class="mock-cap">Vista ilustrativa</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="que-es">
+      <div class="container">
+        <h2>Qué es</h2>
+        <p class="intro">Calendario WoodTools es la herramienta interna de publicación de WoodTools: una aplicación para Windows que el equipo de marketing usa para organizar su trabajo y publicar el contenido de la empresa en sus propias cuentas, en el día y la hora planificados.</p>
+        <div class="facts">
+          <div class="fact"><strong>Un calendario para todo</strong>Las tareas del equipo y las publicaciones programadas, en un mismo lugar.</div>
+          <div class="fact"><strong>Cinco redes, APIs oficiales</strong>Facebook, Instagram, Threads, YouTube y TikTok, conectadas con sus inicios de sesión oficiales.</div>
+          <div class="fact"><strong>Sin servidores propios</strong>La información queda guardada en la computadora de la empresa.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="funciones">
+      <div class="container">
+        <h2>Funciones</h2>
+        <p class="intro">Todo lo necesario para pasar de la idea a la publicación sin cambiar de herramienta.</p>
+        <div class="grid">
+          <article class="card">
+            <h3>Calendario visual</h3>
+            <p>Vistas de mes, semana, día y lista. Para cambiar una tarea de fecha u hora, alcanza con arrastrarla.</p>
+          </article>
+          <article class="card">
+            <h3>Programación de contenido</h3>
+            <p>Fotos, videos, reels, historias y Shorts con su texto, link, portada y las redes de destino de cada pieza.</p>
+          </article>
+          <article class="card">
+            <h3>Publicación automática</h3>
+            <p>La app arranca con Windows, trabaja en segundo plano y publica a la hora indicada. También se puede publicar al instante con «Publicar ahora».</p>
+          </article>
+          <article class="card">
+            <h3>Control antes de publicar</h3>
+            <p>Antes de confirmar se ve cómo va a salir cada publicación: visibilidad en YouTube; privacidad, interacciones y divulgación comercial en TikTok.</p>
+          </article>
+          <article class="card">
+            <h3>Tareas recurrentes y plantillas</h3>
+            <p>Repetición diaria, semanal o mensual, y plantillas para reutilizar las tareas que se hacen seguido.</p>
+          </article>
+          <article class="card">
+            <h3>Estado de las conexiones</h3>
+            <p>Un panel muestra qué cuentas están conectadas, cuándo vence cada acceso y si hace falta reconectar. Los accesos se renuevan solos.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="como-funciona">
+      <div class="container">
+        <h2>Cómo funciona</h2>
+        <p class="intro">Cuatro pasos, y la mayoría se hacen una sola vez.</p>
+        <ol class="steps">
+          <li>
+            <h3>Conectar las cuentas</h3>
+            <p>Desde «Conexiones», cada cuenta se conecta con el inicio de sesión oficial de Facebook, Instagram, Threads, Google o TikTok. La app nunca ve ni guarda contraseñas.</p>
+          </li>
+          <li>
+            <h3>Crear la tarea</h3>
+            <p>Se elige el archivo, se escribe el texto, se marcan las redes y se define la fecha y la hora, con los ajustes de cada red a la vista.</p>
+          </li>
+          <li>
+            <h3>Publica sola</h3>
+            <p>A la hora programada, con la computadora encendida, la app envía el contenido a cada red mediante su API oficial.</p>
+          </li>
+          <li>
+            <h3>Aviso del resultado</h3>
+            <p>Notifica si se publicó o si algo falló (por ejemplo, sin internet o con un acceso vencido) y permite reintentar.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="section" id="recordatorios">
+      <div class="container">
+        <h2>Recordatorios según la importancia</h2>
+        <p class="intro">Cada tarea tiene un nivel de importancia que define cómo avisa la app.</p>
+        <div class="levels">
+          <div class="level level-t">
+            <h3>Trascendental</h3>
+            <p>Ventana emergente al frente, con sonido, y opciones para marcarla hecha, posponerla 10 minutos o cerrarla.</p>
+          </div>
+          <div class="level">
+            <h3>Importante</h3>
+            <p>Notificación nativa de Windows.</p>
+          </div>
+          <div class="level level-p">
+            <h3>Prescindible</h3>
+            <p>Sin aviso: queda visible dentro del calendario.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="redes">
+      <div class="container">
+        <h2>Redes y APIs oficiales</h2>
+        <p class="intro">Calendario WoodTools solo usa las APIs oficiales de cada plataforma y pide únicamente los permisos necesarios para publicar.</p>
+        <div class="grid">
+          <article class="card platform">
+            <h3>Facebook</h3>
+            <p>Publicaciones con foto o video, reels e historias en la Página de WoodTools.</p>
+            <div><span class="label">API</span>Meta Graph API (Pages API) con Inicio de sesión con Facebook</div>
+            <div><span class="label">Permisos</span><div class="chips"><code>pages_show_list</code><code>pages_read_engagement</code><code>pages_manage_posts</code><code>business_management</code></div></div>
+          </article>
+          <article class="card platform">
+            <h3>Instagram</h3>
+            <p>Fotos, reels e historias en la cuenta profesional de WoodTools.</p>
+            <div><span class="label">API</span>Instagram API con inicio de sesión de Instagram (publicación de contenido)</div>
+            <div><span class="label">Permisos</span><div class="chips"><code>instagram_business_basic</code><code>instagram_business_content_publish</code></div></div>
+          </article>
+          <article class="card platform">
+            <h3>Threads</h3>
+            <p>Publicaciones con texto, foto o video en el perfil de WoodTools.</p>
+            <div><span class="label">API</span>Threads API</div>
+            <div><span class="label">Permisos</span><div class="chips"><code>threads_basic</code><code>threads_content_publish</code></div></div>
+          </article>
+          <article class="card platform">
+            <h3>YouTube</h3>
+            <p>Videos y Shorts del canal de WoodTools, con título, descripción, visibilidad y miniatura.</p>
+            <div><span class="label">API</span>YouTube Data API v3 (Servicios de API de YouTube) con Google OAuth 2.0</div>
+            <div><span class="label">Permisos</span><div class="chips"><code>youtube.upload</code><code>youtube.readonly</code></div></div>
+          </article>
+          <article class="card platform">
+            <h3>TikTok</h3>
+            <p>Videos en la cuenta de WoodTools, con publicación directa o envío a borradores.</p>
+            <div><span class="label">API</span>Login Kit para escritorio y Content Posting API</div>
+            <div><span class="label">Permisos</span><div class="chips"><code>user.info.basic</code><code>video.upload</code><code>video.publish</code></div></div>
+          </article>
+          <article class="card platform">
+            <h3>Cloudinary</h3>
+            <p>Alojamiento temporal de fotos y videos para que Meta pueda descargarlos al publicar en Instagram, Threads e historias de Facebook.</p>
+            <div><span class="label">API</span>Cloudinary Upload API</div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="datos">
+      <div class="container">
+        <h2>Datos y privacidad</h2>
+        <p class="intro">La app maneja lo mínimo indispensable para publicar, y lo guarda en la computadora de la empresa.</p>
+        <div class="split">
+          <div class="panel">
+            <h3>Qué datos usa</h3>
+            <ul class="checklist">
+              <li>Los tokens de acceso que entrega cada red al conectar la cuenta.</li>
+              <li>Datos básicos de la cuenta conectada: nombre, ID, nombre de usuario o nombre del canal.</li>
+              <li>Las tareas, textos y archivos que carga el equipo.</li>
+              <li>El resultado de cada publicación (ID y enlace).</li>
+            </ul>
+          </div>
+          <div class="panel">
+            <h3>Dónde quedan</h3>
+            <ul class="checklist">
+              <li>En la computadora de la empresa, dentro del perfil de Windows del usuario.</li>
+              <li>Sin servidores propios, sin analíticas, sin publicidad y sin venta ni cesión a terceros.</li>
+              <li>Solo se envían a la red elegida al publicar. Los archivos para Meta se alojan temporalmente en Cloudinary.</li>
+              <li>Se pueden borrar en cualquier momento: ver <a href="data-deletion.html">Eliminación de datos</a>.</li>
+            </ul>
+          </div>
+        </div>
+        <p>El detalle completo está en la <a href="privacy.html">Política de privacidad</a>.</p>
+      </div>
+    </section>
+
+    <section class="section" id="requisitos">
+      <div class="container">
+        <h2>Requisitos y aspectos legales</h2>
+        <div class="split">
+          <div class="card">
+            <h3>Qué se necesita</h3>
+            <ul class="checklist">
+              <li>Una computadora con Windows 10 u 11 y conexión a internet.</li>
+              <li>Las cuentas de WoodTools: Página de Facebook, cuenta profesional de Instagram, perfil de Threads, canal de YouTube y cuenta de TikTok.</li>
+              <li>Una cuenta de Cloudinary para publicar en Instagram, Threads e historias de Facebook.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Documentos legales</h3>
+            <ul class="checklist">
+              <li><a href="privacy.html">Política de privacidad</a></li>
+              <li><a href="terms.html">Términos del servicio</a></li>
+              <li><a href="data-deletion.html">Instrucciones de eliminación de datos</a></li>
+            </ul>
+          </div>
+        </div>
+        <p class="disclaimer">Las funciones de YouTube usan los Servicios de API de YouTube. Al usarlas, aceptás las <a href="https://www.youtube.com/t/terms">Condiciones del Servicio de YouTube</a> y quedás alcanzado por la <a href="http://www.google.com/policies/privacy">Política de Privacidad de Google</a>.</p>
+        <p class="disclaimer">Calendario WoodTools no está afiliada, patrocinada ni respaldada por Meta, Google, YouTube, TikTok ni Cloudinary. Sus nombres se mencionan solo para indicar con qué servicios se conecta la aplicación.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <nav class="nav" aria-label="Pie de página">
+        <a href="index.html" aria-current="page">Inicio</a>
+        <a href="privacy.html">Política de privacidad</a>
+        <a href="terms.html">Términos</a>
+        <a href="data-deletion.html">Eliminación de datos</a>
+      </nav>
+      <p>Calendario WoodTools · Contacto: <a href="mailto:woodtoolsmarketing@gmail.com">woodtoolsmarketing@gmail.com</a></p>
+    </div>
   </footer>
 </body>
 </html>

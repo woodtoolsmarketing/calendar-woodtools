@@ -1,6 +1,7 @@
 /*
  * preload.js — Puente seguro entre el renderer y el proceso principal.
  * Expone window.api (calendario) y window.alertApi (ventana trascendental).
+ * Nunca pasa secretos ni tokens al renderer: las vistas de conexión solo dicen si están cargados.
  */
 const { contextBridge, ipcRenderer } = require('electron');
 
@@ -13,28 +14,28 @@ contextBridge.exposeInMainWorld('api', {
   deleteTemplate: (id) => ipcRenderer.invoke('template:delete', id),
   testNotify: (task) => ipcRenderer.invoke('notify:test', task),
   onDataChanged: (cb) => ipcRenderer.on('data:changed', () => cb()),
-
-  // Conexiones / integraciones
-  connectionsSummary: () => ipcRenderer.invoke('connections:summary'),
-  getMeta: () => ipcRenderer.invoke('connections:getMeta'),
-  saveMeta: (data) => ipcRenderer.invoke('connections:saveMeta', data),
-  testMeta: (creds) => ipcRenderer.invoke('connections:testMeta', creds),
-  upgradeMetaToken: (creds) => ipcRenderer.invoke('connections:upgradeMetaToken', creds),
-  getHosting: () => ipcRenderer.invoke('connections:getHosting'),
-  saveHosting: (data) => ipcRenderer.invoke('connections:saveHosting', data),
-  getYoutube: () => ipcRenderer.invoke('connections:getYoutube'),
-  saveYoutube: (data) => ipcRenderer.invoke('connections:saveYoutube', data),
-  connectYoutube: (data) => ipcRenderer.invoke('connections:connectYoutube', data),
-  testYoutube: () => ipcRenderer.invoke('connections:testYoutube'),
-  getThreads: () => ipcRenderer.invoke('connections:getThreads'),
-  saveThreads: (data) => ipcRenderer.invoke('connections:saveThreads', data),
-  testThreads: (creds) => ipcRenderer.invoke('connections:testThreads', creds),
-  getTiktok: () => ipcRenderer.invoke('connections:getTiktok'),
-  saveTiktok: (data) => ipcRenderer.invoke('connections:saveTiktok', data),
-  connectTiktok: (data) => ipcRenderer.invoke('connections:connectTiktok', data),
-  testTiktok: () => ipcRenderer.invoke('connections:testTiktok'),
   pickMedia: () => ipcRenderer.invoke('media:pick'),
   publishNow: (task) => ipcRenderer.invoke('content:publishNow', task),
+
+  // Conexiones (platform = 'facebook' | 'instagram' | 'threads' | 'youtube' | 'tiktok' | 'hosting')
+  getConnection: (platform) => ipcRenderer.invoke('conn:get', platform),
+  saveConnection: (platform, data) => ipcRenderer.invoke('conn:save', platform, data),
+  connect: (platform) => ipcRenderer.invoke('conn:connect', platform),
+  pasteToken: (platform, token) => ipcRenderer.invoke('conn:pasteToken', platform, token),
+  disconnect: (platform) => ipcRenderer.invoke('conn:disconnect', platform),
+
+  // Estado de las conexiones
+  getStatus: () => ipcRenderer.invoke('status:get'),
+  refreshStatus: () => ipcRenderer.invoke('status:refresh'),
+  onStatusChanged: (cb) => ipcRenderer.on('status:changed', (_e, payload) => cb(payload)),
+  onOpenConnections: (cb) => ipcRenderer.on('ui:openConnections', () => cb()),
+
+  // TikTok: datos del creador (obligatorios antes de publicar)
+  tiktokCreatorInfo: () => ipcRenderer.invoke('tiktok:creatorInfo'),
+
+  // App
+  openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
+  getAppInfo: () => ipcRenderer.invoke('app:info'),
 });
 
 contextBridge.exposeInMainWorld('alertApi', {

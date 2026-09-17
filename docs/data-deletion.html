@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Eliminación de datos — Calendario WoodTools</title>
+  <meta name="description" content="Instrucciones para eliminar los datos de Calendario WoodTools y quitarle el acceso a las cuentas de Facebook, Instagram, Threads, YouTube y TikTok." />
+  <link rel="icon" type="image/png" href="icon.png" />
+  <style>
+    :root { --pink: #E84A6F; --pink-ink: #B3375A; --copper: #B87333; --teal: #1F9E91; --ink: #1d1f24; --muted: #5a6070; --line: #e6e4e1; --soft: #f8f6f3; --bg: #ffffff; }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font-family: "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 16px; line-height: 1.65; }
+    img { max-width: 100%; height: auto; }
+    a { color: var(--pink-ink); text-underline-offset: 2px; overflow-wrap: anywhere; }
+    a:hover { color: var(--pink); }
+    h1, h2, h3 { line-height: 1.25; }
+    code { font-family: Consolas, "Cascadia Mono", Menlo, monospace; font-size: .88em; background: #f1efec; padding: 1px 6px; border-radius: 4px; overflow-wrap: anywhere; }
+    .container { max-width: 1080px; margin: 0 auto; padding-inline: 20px; }
+    .skip { position: absolute; left: -9999px; }
+    .skip:focus { left: 16px; top: 8px; z-index: 20; background: #fff; padding: 6px 10px; }
+    .site-header { background: #fff; border-bottom: 1px solid var(--line); }
+    .site-header .container { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 28px; padding-block: 12px; }
+    .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); font-weight: 700; font-size: 17px; text-decoration: none; }
+    .brand img { width: 36px; height: 36px; border-radius: 9px; }
+    .nav { display: flex; flex-wrap: wrap; gap: 4px 20px; font-size: 15px; }
+    .nav a { color: var(--muted); text-decoration: none; padding: 3px 0; border-bottom: 2px solid transparent; }
+    .nav a:hover { color: var(--ink); }
+    .nav a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--pink); }
+    .site-footer { margin-top: 72px; background: var(--soft); border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+    .site-footer .container { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 28px; padding-block: 26px; }
+    .site-footer p { margin: 0; }
+    .page-head { background: linear-gradient(135deg, var(--pink) 0%, var(--copper) 100%); color: #fff; }
+    .page-head .container { padding-block: 44px 38px; }
+    .page-head h1 { margin: 0 0 8px; font-size: clamp(28px, 5vw, 40px); }
+    .page-head p { margin: 0; max-width: 680px; opacity: .96; }
+    .doc { max-width: 800px; }
+    .doc h2 { font-size: 22px; margin: 44px 0 10px; }
+    .doc h3 { font-size: 17px; margin: 26px 0 6px; }
+    .doc li { margin: 6px 0; }
+    .note { margin: 18px 0; padding: 12px 16px; background: #eef7f5; border-left: 4px solid var(--teal); border-radius: 0 10px 10px 0; }
+    .note p { margin: 0; }
+    .updated { color: var(--muted); font-size: 14px; margin-top: 28px; }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#contenido">Saltar al contenido</a>
+  <header class="site-header">
+    <div class="container">
+      <a class="brand" href="index.html"><img src="icon.png" alt="" width="36" height="36" />Calendario WoodTools</a>
+      <nav class="nav" aria-label="Principal">
+        <a href="index.html">Inicio</a>
+        <a href="privacy.html">Política de privacidad</a>
+        <a href="terms.html">Términos</a>
+        <a href="data-deletion.html" aria-current="page">Eliminación de datos</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="contenido">
+    <div class="page-head">
+      <div class="container">
+        <h1>Eliminación de datos de usuario</h1>
+        <p>Cómo borrar los datos de Calendario WoodTools y quitarle el acceso a tus cuentas.</p>
+      </div>
+    </div>
+
+    <div class="container doc">
+      <p class="updated">Aplicación: <strong>Calendario WoodTools</strong> · Última actualización: 15 de septiembre de 2026</p>
+
+      <div class="note">
+        <p><strong>No hay copias en servidores.</strong> Calendario WoodTools guarda todo en la computadora donde está instalada. WoodTools no tiene servidores con datos de tus cuentas, así que no hace falta enviar ninguna solicitud: con los pasos de esta página se borra todo. Si necesitás ayuda, escribinos a la dirección de contacto que figura al pie.</p>
+      </div>
+
+      <h2 id="que-se-guarda">1. Qué datos guarda la Aplicación</h2>
+      <ul>
+        <li><strong>Conexiones:</strong> tokens de acceso de Facebook, Instagram, Threads, YouTube y TikTok, y datos básicos de cada cuenta (nombre, ID, nombre de usuario o nombre del canal).</li>
+        <li><strong>Tareas y contenido:</strong> tareas, textos, links, ajustes de publicación y copias de las imágenes y videos elegidos.</li>
+        <li><strong>Configuración:</strong> identificadores de las apps de desarrollador de WoodTools y datos de su cuenta de Cloudinary.</li>
+        <li><strong>Estado:</strong> resultado de las publicaciones y estado de las conexiones (sin tokens).</li>
+        <li><strong>Sesión de inicio de sesión:</strong> las cookies de Facebook, Instagram y Threads que guarda la ventana de inicio de sesión de la Aplicación.</li>
+      </ul>
+      <p>Todo está en el perfil de Windows del usuario, en <code>%APPDATA%\calendario-interactive</code> y <code>%LOCALAPPDATA%\CalendarioWoodTools</code>.</p>
+
+      <h2 id="desconectar">2. Desconectar una red</h2>
+      <ol>
+        <li>Abrí Calendario WoodTools.</li>
+        <li>Entrá a <strong>⚙ Conexiones</strong> y elegí la red.</li>
+        <li>Tocá <strong>Desconectar</strong>. Los tokens de esa red se borran en el momento.</li>
+      </ol>
+      <p>Los identificadores de la app de desarrollador y la sesión de la ventana de inicio de sesión de Facebook, Instagram y Threads quedan guardados para poder volver a conectar. Para borrarlos también, seguí el punto 3.</p>
+
+      <h2 id="borrar-todo">3. Borrar todos los datos</h2>
+      <ol>
+        <li>Cerrá la Aplicación: clic derecho en su ícono de la bandeja del sistema (al lado del reloj) → <strong>Salir</strong>.</li>
+        <li>Desinstalala: <strong>Configuración de Windows → Aplicaciones → Aplicaciones instaladas</strong> (en Windows 10: <strong>Aplicaciones y características</strong>) <strong>→ Calendario WoodTools → Desinstalar</strong>.</li>
+        <li>Apretá <strong>Windows + R</strong>, escribí <code>%APPDATA%</code> y tocá <strong>Aceptar</strong>. Borrá la carpeta <code>calendario-interactive</code>.</li>
+        <li>Apretá <strong>Windows + R</strong>, escribí <code>%LOCALAPPDATA%</code> y tocá <strong>Aceptar</strong>. Borrá la carpeta <code>CalendarioWoodTools</code>.</li>
+        <li>Vaciá la <strong>Papelera de reciclaje</strong>.</li>
+      </ol>
+
+      <h2 id="revocar">4. Quitar el acceso en cada plataforma</h2>
+      <p>Borrar los datos en la computadora no le quita el permiso a la Aplicación en tus cuentas. Para hacerlo:</p>
+      <ul>
+        <li><strong>Google / YouTube:</strong> <a href="https://security.google.com/settings/security/permissions">security.google.com/settings/security/permissions</a> → Calendario WoodTools → Quitar acceso.</li>
+        <li><strong>Facebook:</strong> Configuración y privacidad → Configuración → <a href="https://www.facebook.com/settings/?tab=business_tools">Integraciones comerciales</a> → Calendario WoodTools → Eliminar.</li>
+        <li><strong>Instagram:</strong> Configuración → Permisos del sitio web → Apps y sitios web (o Integraciones comerciales) → Calendario WoodTools → Eliminar.</li>
+        <li><strong>Threads:</strong> Configuración → Cuenta → Permisos del sitio web → Calendario WoodTools → Eliminar.</li>
+        <li><strong>TikTok:</strong> Perfil → menú → Configuración y privacidad → Seguridad y permisos → Administrar apps → Calendario WoodTools → Eliminar acceso.</li>
+      </ul>
+
+      <h2 id="cloudinary">5. Archivos en Cloudinary</h2>
+      <p>Las fotos y videos para Instagram, Threads e historias de Facebook se suben a la cuenta de Cloudinary de WoodTools. Para borrarlos: <strong>Media Library</strong> → carpeta <code>calendario-wt</code> → seleccioná los archivos → <strong>Delete</strong>.</p>
+
+      <h2 id="publicaciones">6. Publicaciones ya realizadas</h2>
+      <p>Lo que ya se publicó sigue en cada red. Para eliminarlo, borralo desde Facebook, Instagram, Threads, YouTube Studio o TikTok.</p>
+
+      <h2 id="plazos">7. Plazos</h2>
+      <ul>
+        <li>Al tocar <strong>Desconectar</strong> o al borrar las carpetas, los datos se eliminan en el momento.</li>
+        <li>Si quitás el acceso desde la plataforma (punto 4), la Aplicación deja de poder usarlo y elimina los tokens y datos de esa cuenta dentro de los 7 días.</li>
+      </ul>
+      <p>Más información en la <a href="privacy.html">Política de privacidad</a>.</p>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <nav class="nav" aria-label="Pie de página">
+        <a href="index.html">Inicio</a>
+        <a href="privacy.html">Política de privacidad</a>
+        <a href="terms.html">Términos</a>
+        <a href="data-deletion.html" aria-current="page">Eliminación de datos</a>
+      </nav>
+      <p>Calendario WoodTools · Contacto: <a href="mailto:woodtoolsmarketing@gmail.com">woodtoolsmarketing@gmail.com</a></p>
+    </div>
+  </footer>
+</body>
+</html>

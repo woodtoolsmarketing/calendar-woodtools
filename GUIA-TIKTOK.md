@@ -1,48 +1,103 @@
 # Guía: conectar TikTok
 
-Necesitás un **Client Key** y **Client Secret** de una app en el portal de
-desarrolladores de TikTok. Sin auditar, el video se sube a tus **borradores** de TikTok
-y vos lo publicás desde la app (2 toques). El posteo público directo requiere auditoría.
+Necesitás un **Client Key** y un **Client Secret** de una app en el portal de desarrolladores de TikTok.
+
+- **Sin auditoría:** el video llega a tus **borradores** de TikTok y lo terminás de publicar desde la
+  app de TikTok.
+- **Con la app aprobada y auditada:** la app publica sola, con la privacidad que elijas.
+
+La revisión de TikTok (video de demostración, textos listos para pegar y auditoría) está en la
+sección 6 de [GUIA-CONEXIONES-DEFINITIVAS.md](GUIA-CONEXIONES-DEFINITIVAS.md).
 
 ---
 
-## PASO 1 — Crear la app
-1. Entrá a **https://developers.tiktok.com/** e iniciá sesión (con tu cuenta de creador).
-2. **Manage apps** → **Connect an app** / **Create an app**.
-3. Completá nombre (*Calendario WoodTools*), categoría, etc.
+## PASO 1: crear la app
 
-## PASO 2 — Agregar productos
-4. Dentro de la app → **Add products**:
-   - **Login Kit** (para el inicio de sesión / OAuth).
-   - **Content Posting API** (para subir videos).
+1. Entrá a https://developers.tiktok.com/ con la cuenta de TikTok de WoodTools.
+2. **Manage apps → Connect an app**. Registrala a nombre de la **organización** (WoodTools), no como individuo.
+3. Nombre **Calendario WoodTools** (sin mencionar TikTok), ícono `assets/icon-1024.png`, categoría y descripción.
+4. **Terms of Service URL:** `https://calendario-woodtools.onrender.com/terms.html`
+   **Privacy Policy URL:** `https://calendario-woodtools.onrender.com/privacy.html`
+5. **Platforms → Desktop** → URL `https://calendario-woodtools.onrender.com/`.
 
-## PASO 3 — Configurar el redirect (¡importante!)
-5. En **Login Kit** → configuración de la plataforma, agregá un **Redirect URI** para
-   **escritorio**. TikTok permite `127.0.0.1` con **puerto comodín**. Poné exactamente:
+## PASO 2: verificar el sitio (URL properties)
+
+6. **URL properties → Verify properties** → **URL prefix** → `https://calendario-woodtools.onrender.com/`.
+7. **Download** del archivo `tiktok….txt` → copialo en la carpeta `docs/` del proyecto → subilo al
+   repositorio (Render lo publica) → **Verify**.
+
+## PASO 3: productos
+
+8. **Add products** → **Login Kit** y **Content Posting API**.
+9. **Login Kit → Desktop → Redirect URI**, exactamente:
    ```
-   http://127.0.0.1:*/
+   http://127.0.0.1:8723/
    ```
-   (Si el campo no acepta el `*`, probá `http://127.0.0.1` y elegí la opción de "desktop".)
+   Tiene que estar en la plataforma **Desktop** (no en Web) y con la barra final. No uses `*`.
+10. **Content Posting API → Direct Post:** activado.
 
-## PASO 4 — Permisos (scopes)
-6. Activá / solicitá los permisos: **`user.info.basic`** y **`video.upload`**.
-   (`video.publish`, para postear público directo, lo agregás cuando la app esté auditada.)
+## PASO 4: permisos (scopes)
 
-## PASO 5 — Copiar las credenciales
-7. En la pantalla de la app vas a ver **Client Key** y **Client Secret** → **copiá los dos**.
+11. `user.info.basic`, `video.upload` y `video.publish`.
 
-## PASO 6 — Conectar en la app
-8. Calendario WoodTools → **⚙ Conexiones → 🎵 TikTok** → pegá **Client Key** y **Client Secret**.
-9. Clic en **"🎵 Conectar con TikTok"** → se abre el login de TikTok → iniciá sesión y **autorizá**.
-10. Si dice **"✅ TikTok conectado"**, listo.
+## PASO 5: copiar las credenciales
+
+12. **Client Key** y **Client Secret**. Ojo: *Sandbox* y *Production* tienen claves distintas. Usá las
+    de Sandbox para probar y grabar la demo; las de Production cuando TikTok apruebe la app.
+
+## PASO 6: conectar en la app
+
+13. **⚙ Conexiones → TikTok** → pegá **Client Key** y **Client Secret**.
+14. **Mi app de TikTok pasó la auditoría**: dejalo **destildado** hasta que TikTok apruebe la auditoría
+    (modo borradores). Tocá **Guardar**.
+15. Tocá **Conectar** → se abre **tu navegador** con TikTok → iniciá sesión → **Autorizar**.
+16. El estado muestra el nombre de la cuenta.
+
+**Cuando TikTok apruebe la auditoría:** tildá **Mi app de TikTok pasó la auditoría**, tocá **Guardar** y
+**Conectar** otra vez (agrega el permiso de publicación directa).
+
+**Una vez por año** TikTok pide volver a autorizar. La app avisa 30 días antes: tocá **Conectar**.
+El acceso diario se renueva solo.
 
 ---
 
 ## Cómo publicar
-- Tarea **Contenido → TikTok → Video** → **📎 Elegir archivo** (MP4) → **Publicar automático** o **📤 Publicar ahora**.
-- El video aparece en los **borradores de TikTok** → abrís TikTok y tocás **Publicar** (le ponés sonido, hashtags, etc.).
-- Cuando tu app esté **auditada**, tildás **"Posteo directo"** en Conexiones y publica solo.
 
-## Si falla al conectar
-- **"redirect_uri mismatch":** el redirect del Paso 3 no coincide. Mandame el error y te paso el formato exacto.
-- **"scope not authorized":** falta activar `video.upload` en los productos/permisos de la app.
+1. Tarea de Tipo **Contenido de redes** → tildá **TikTok** → **Publicar automático** →
+   **📎 Elegir archivo** (MP4 recomendado, o MOV).
+2. En el bloque de TikTok (en modo borradores solo aparece el aviso de que va a tu bandeja):
+   - **Publicando como:** la cuenta de TikTok donde se va a publicar.
+   - **¿Quién puede ver este video?:** obligatorio y **sin valor por defecto** (las opciones las da tu cuenta).
+   - **Permitir comentarios, Dúo y Stitch:** desmarcados por defecto; en gris si tu cuenta los tiene desactivados.
+   - **Divulgar contenido comercial:** activalo si el video promociona algo → **Tu marca**
+     (productos de WoodTools) y/o **Contenido de marca** (colaboración paga). Con Contenido de marca no
+     se puede elegir *Solo yo*.
+   - **Portada: segundo del video:** el momento del video que se usa como portada.
+   - Al publicar aceptás la **Declaración de confirmación de uso de música** de TikTok (y la Política de
+     contenido de marca, si corresponde). No hay casilla: el texto aparece en el bloque.
+3. **Guardar** (se publica sola a la hora programada) o **📤 Publicar ahora**, que antes pide confirmar
+   y muestra quién va a poder ver el video.
+
+- **Modo borradores (sin auditar):** TikTok te manda una notificación; abrís el borrador en la app de
+  TikTok y lo publicás. Máximo **5 borradores pendientes cada 24 h**. La app lo marca como "enviado a
+  borradores", no como publicado.
+- **Posteo directo (auditada):** TikTok puede tardar unos minutos en procesarlo. Límite aproximado de
+  **15 publicaciones por día** por cuenta.
+
+## Límites
+
+- Video de 23 a 60 fps, entre 360 y 4096 px de lado, hasta 4 GB.
+- Duración máxima: la que permita tu cuenta (la app la muestra; por API, hasta 10 minutos).
+
+## Si falla
+
+- **"redirect_uri mismatch":** el Redirect URI del PASO 3 no es exactamente `http://127.0.0.1:8723/`
+  en la plataforma Desktop.
+- **"scope_not_authorized":** falta aprobar o agregar un permiso, o tildaste **Mi app de TikTok pasó la
+  auditoría** antes de tiempo. Destildalo, tocá **Guardar** y **Conectar**.
+- **"unaudited_client_can_only_post_to_private_accounts":** la app todavía no está auditada. Destildá
+  **Mi app de TikTok pasó la auditoría**, tocá **Guardar** y reconectá (modo borradores).
+- **"spam_risk_too_many_posts":** llegaste al límite del día; reintentá mañana.
+- **"spam_risk_too_many_pending_share":** publicá o borrá los borradores pendientes en TikTok.
+- **El navegador no vuelve a la app:** otro programa puede estar usando el puerto 8723; cerralo o
+  reiniciá la PC y tocá **Conectar** de nuevo.

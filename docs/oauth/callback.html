@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Calendario WoodTools — Conexión</title>
+<style>
+  body { margin: 0; font-family: "Segoe UI", system-ui, sans-serif; background: #14161c; color: #e7e9ee; text-align: center; padding: 64px 16px; }
+  h2 { margin: 0 0 10px; }
+  p { color: #a9afbd; max-width: 460px; margin: 0 auto; line-height: 1.5; }
+</style>
+</head>
+<body>
+  <h2 id="t">✅ Cuenta conectada</h2>
+  <p id="m">Ya podés cerrar esta ventana y volver al Calendario WoodTools.</p>
+  <script>
+    // La app de escritorio captura esta dirección antes de que cargue.
+    // Esta página es solo un respaldo: no muestra ni guarda ningún código.
+    var q = new URLSearchParams(location.search);
+    if (q.get('error') || q.get('error_code')) {
+      document.getElementById('t').textContent = '⚠️ No se completó la conexión';
+      document.getElementById('m').textContent = 'Cerrá esta ventana y volvé a tocar "Conectar" en el Calendario WoodTools.';
+    }
+    if (history.replaceState) history.replaceState(null, '', location.pathname);
+  </script>
+</body>
+</html>

@@ -1,6 +1,6 @@
 {
   "name": "calendario-interactive",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Calendario interactivo de tareas y programación de contenido para WoodTools",
   "main": "main.js",
   "scripts": {
@@ -18,6 +18,7 @@
       "store.js",
       "recurrence.js",
       "credentials.js",
+      "tokens.js",
       "alert.html",
       "src/**/*",
       "integrations/**/*",

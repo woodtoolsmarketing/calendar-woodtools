@@ -21,7 +21,10 @@
       </div>
 
       <button id="btnNew" class="btn-primary">+ Nueva tarea</button>
-      <button id="btnConnections" class="btn-ghost">⚙ Conexiones (redes)</button>
+      <button id="btnConnections" class="btn-ghost">
+        <span>⚙ Conexiones (redes)</span>
+        <span id="connAlertDot" class="conn-dot" hidden></span>
+      </button>
 
       <div class="legend">
         <div class="legend-title">Importancia</div>
@@ -57,7 +60,13 @@
         <div id="listRealizadas" class="task-list" hidden></div>
       </div>
 
-      <div class="footer-note">Se queda en la bandeja del sistema para avisarte aunque cierres la ventana.</div>
+      <div class="footer-note">
+        Se queda en la bandeja del sistema para avisarte aunque cierres la ventana.
+        <div class="legal-links">
+          <a href="#" data-link="privacyUrl">Política de privacidad</a> · <a href="#" data-link="termsUrl">Términos</a>
+          <span id="appVersion" class="app-version"></span>
+        </div>
+      </div>
     </aside>
 
     <!-- ===================== CALENDARIO ===================== -->
@@ -192,6 +201,12 @@
             </div>
           </div>
 
+          <!-- Estado de publicación por red de esta ocurrencia -->
+          <div id="pubStatusField" class="field" hidden>
+            <label>Estado de publicación</label>
+            <div id="pubStatus" class="pub-status"></div>
+          </div>
+
           <div id="autoFields" hidden>
             <div class="field">
               <label>Archivo (imagen o video)</label>
@@ -200,7 +215,8 @@
                 <span id="mediaFileName" class="file-name">Ningún archivo</span>
                 <button type="button" id="btnClearMedia" class="icon-btn" title="Quitar archivo" hidden>✕</button>
               </div>
-              <small class="hint">La app lo sube sola para Instagram. JPG o MP4 (Instagram pide <strong>JPG</strong> para fotos, no PNG).</small>
+              <small class="hint">Las imágenes se convierten a JPEG automáticamente. Videos: MP4 o MOV.</small>
+              <div id="mediaWarn" class="warn-line" hidden></div>
             </div>
             <div class="field">
               <label>Miniatura / Portada del video (opcional)</label>
@@ -209,7 +225,7 @@
                 <span id="thumbFileName" class="file-name">Ninguna</span>
                 <button type="button" id="btnClearThumb" class="icon-btn" title="Quitar miniatura" hidden>✕</button>
               </div>
-              <small class="hint">JPG o PNG. Se usa en YouTube (miniatura), Reels de Instagram y videos de Facebook (portada).</small>
+              <small class="hint">JPG o PNG. Se usa en YouTube (miniatura), Reels de Instagram y videos de Facebook (portada). TikTok usa un segundo del video (lo elegís abajo).</small>
             </div>
             <details class="url-advanced">
               <summary>o pegar una URL pública (avanzado)</summary>
@@ -218,21 +234,107 @@
             <div class="field">
               <label>Texto / Epígrafe (Instagram, Facebook, TikTok, Threads)</label>
               <textarea id="fCaption" rows="2" placeholder="Lo que va como descripción del post"></textarea>
+              <small id="captionCount" class="hint"></small>
             </div>
             <div class="field">
               <label>Link (para publicaciones de Facebook)</label>
               <input id="fLink" type="url" placeholder="https://woodtools..." autocomplete="off" />
             </div>
 
+            <!-- YouTube -->
             <div id="ytFields" class="platform-box" hidden>
-              <div class="platform-box-title">▶️ YouTube (personalizado)</div>
+              <div class="platform-box-title">▶️ YouTube</div>
               <div class="field">
-                <label>Título de YouTube</label>
-                <input id="fYtTitle" type="text" maxlength="100" placeholder="Si lo dejás vacío, usa el nombre de la tarea" autocomplete="off" />
+                <div class="label-row">
+                  <label for="fYtTitle">Título de YouTube</label>
+                  <span id="ytTitleCount" class="counter">0/100</span>
+                </div>
+                <input id="fYtTitle" type="text" placeholder="Si lo dejás vacío, usa el nombre de la tarea" autocomplete="off" />
+                <small id="ytTitleError" class="field-error" hidden></small>
               </div>
               <div class="field">
-                <label>Descripción de YouTube</label>
+                <div class="label-row">
+                  <label for="fYtDescription">Descripción de YouTube</label>
+                  <span id="ytDescCount" class="counter">0/5000</span>
+                </div>
                 <textarea id="fYtDescription" rows="3" placeholder="Si lo dejás vacío, usa el epígrafe de arriba"></textarea>
+                <small id="ytDescError" class="field-error" hidden></small>
+              </div>
+              <div class="field">
+                <label for="fYtPrivacy">Visibilidad en YouTube</label>
+                <select id="fYtPrivacy">
+                  <option value="public">Público</option>
+                  <option value="unlisted">No listado</option>
+                  <option value="private">Privado</option>
+                </select>
+              </div>
+              <label class="check-line">
+                <input type="checkbox" id="fYtShorts" />
+                <span>Agregar #Shorts a la descripción</span>
+              </label>
+              <div id="ytVisibility" class="visibility-line"></div>
+              <div id="ytAuditWarn" class="warn-line" hidden></div>
+            </div>
+
+            <!-- TikTok -->
+            <div id="ttFields" class="platform-box" hidden>
+              <div class="platform-box-title">🎵 TikTok</div>
+              <div id="ttMessage" class="conn-result"></div>
+              <div id="ttDraftNote" class="note" hidden>Se enviará como borrador a tu bandeja de TikTok; lo terminás de publicar desde la app de TikTok.</div>
+
+              <div id="ttPreviewWrap" class="tt-preview" hidden>
+                <small class="hint">Vista previa del video</small>
+                <video id="ttPreview" controls muted preload="metadata"></video>
+              </div>
+
+              <div id="ttDirect" class="tt-direct" hidden>
+                <div id="ttCreator" class="tt-creator" hidden>
+                  <img id="ttAvatar" alt="" referrerpolicy="no-referrer" />
+                  <div class="tt-creator-text">
+                    <small class="hint">Publicando como</small>
+                    <div id="ttNickname" class="tt-nick"></div>
+                  </div>
+                  <button type="button" id="btnTtReload" class="btn-small" title="Volver a consultar tu cuenta de TikTok">↻</button>
+                </div>
+
+                <div class="field">
+                  <label for="ttPrivacy">¿Quién puede ver este video? *</label>
+                  <select id="ttPrivacy">
+                    <option value="">— Elegí quién puede verlo —</option>
+                  </select>
+                  <small id="ttPrivacyHint" class="field-error" hidden>La visibilidad del contenido de marca no puede ser privada</small>
+                </div>
+
+                <div class="field">
+                  <label>Interacciones</label>
+                  <label class="check-line"><input type="checkbox" id="ttAllowComment" /><span>Permitir comentarios</span></label>
+                  <label class="check-line"><input type="checkbox" id="ttAllowDuet" /><span>Permitir Dúo</span></label>
+                  <label class="check-line"><input type="checkbox" id="ttAllowStitch" /><span>Permitir Stitch</span></label>
+                  <small id="ttInteractionNote" class="hint" hidden></small>
+                </div>
+
+                <div class="field">
+                  <label class="switch-line">
+                    <input type="checkbox" id="ttDisclose" />
+                    <span class="switch"></span>
+                    <span>Divulgar contenido comercial</span>
+                  </label>
+                  <small class="hint">Activalo si el video promociona una marca, un producto o un servicio.</small>
+                  <div id="ttDiscloseOptions" class="sub-options" hidden>
+                    <label class="check-line"><input type="checkbox" id="ttBrandOrganic" /><span><strong>Tu marca</strong> — promocionás tu propio negocio.</span></label>
+                    <label class="check-line"><input type="checkbox" id="ttBrandedContent" /><span><strong>Contenido de marca</strong> — promocionás a otra marca o a un tercero.</span></label>
+                    <small id="ttDiscloseLabel" class="hint"></small>
+                    <small id="ttDiscloseError" class="field-error" hidden>Elegí al menos una opción: «Tu marca» o «Contenido de marca».</small>
+                  </div>
+                </div>
+
+                <div class="field">
+                  <label for="ttCoverSec">Portada: segundo del video</label>
+                  <input id="ttCoverSec" type="number" min="0" step="0.1" placeholder="0 (primer cuadro)" />
+                </div>
+
+                <small id="ttDeclaration" class="hint"></small>
+                <small class="hint">Después de publicar, TikTok puede tardar unos minutos en procesar el video.</small>
               </div>
             </div>
           </div>
@@ -262,6 +364,8 @@
           <input type="checkbox" id="fSaveTemplate" />
           <span>Guardar como plantilla para repetir luego</span>
         </label>
+
+        <div id="formError" class="form-error" hidden></div>
       </div>
 
       <div class="modal-foot">
@@ -277,134 +381,287 @@
 
   <!-- ===================== MODAL CONEXIONES ===================== -->
   <div id="connModal" class="modal-backdrop" hidden>
-    <div class="modal">
+    <div class="modal modal-wide">
       <div class="modal-head">
         <h2>Conexiones de redes</h2>
-        <button id="connClose" class="icon-btn">✕</button>
+        <button id="connClose" class="icon-btn" title="Cerrar">✕</button>
       </div>
       <div class="modal-body">
-        <div class="conn-section">
-          <div class="conn-title">
-            <span>📘 Meta — Facebook + Instagram</span>
-            <span id="metaStatus" class="conn-badge">Sin conectar</span>
-          </div>
-          <p class="hint">Pegá los datos de tu app de Meta. Te dejé el paso a paso en <code>GUIA-META.md</code>. Para tus propias cuentas no hace falta la revisión de semanas.</p>
-          <div class="field">
-            <label>App ID</label>
-            <input id="mAppId" type="text" autocomplete="off" />
-          </div>
-          <div class="field">
-            <label>App Secret</label>
-            <input id="mAppSecret" type="password" autocomplete="off" />
-          </div>
-          <div class="field">
-            <label>ID de la Página de Facebook</label>
-            <input id="mPageId" type="text" autocomplete="off" />
-          </div>
-          <div class="field">
-            <label>Token de la Página (larga duración)</label>
-            <textarea id="mPageToken" rows="2" autocomplete="off"></textarea>
-          </div>
-          <div class="field">
-            <label>ID de la cuenta de Instagram (Business)</label>
-            <input id="mIgUserId" type="text" autocomplete="off" />
-          </div>
-          <div class="field">
-            <label>Token de Instagram (método nuevo, para publicar)</label>
-            <textarea id="mIgToken" rows="2" autocomplete="off" placeholder="Lo generás en el panel de Meta → Instagram → 'inicio de sesión con Instagram'"></textarea>
-            <small class="hint">Este es distinto al token de Página. Es el que permite <strong>publicar</strong> en Instagram sin la revisión de semanas.</small>
-          </div>
-          <div id="connResult" class="conn-result"></div>
-        </div>
+        <div id="recoveryNotice" class="warn-line" hidden></div>
 
-        <div class="conn-section" style="margin-top:18px;border-top:1px solid var(--line);padding-top:16px;">
-          <div class="conn-title">
-            <span>🖼️ Hosting de archivos (opcional)</span>
-            <span id="hostingStatus" class="conn-badge">Gratis</span>
+        <!-- Estado de las APIs -->
+        <div class="status-head">
+          <div>
+            <div class="section-title">Estado de las APIs</div>
+            <small id="statusCheckedAt" class="hint">Todavía no se verificó</small>
           </div>
-          <p class="hint">Para subir archivos a Instagram. Si lo dejás vacío, la app usa un hosting gratuito temporal (anda sin configurar nada). Para algo más confiable, creá una cuenta gratis en <strong>Cloudinary</strong> y pegá estos 2 datos.</p>
-          <div class="field">
-            <label>Cloudinary — Cloud name</label>
-            <input id="hCloudName" type="text" autocomplete="off" placeholder="opcional" />
-          </div>
-          <div class="field">
-            <label>Cloudinary — Upload preset (sin firmar)</label>
-            <input id="hUploadPreset" type="text" autocomplete="off" placeholder="opcional" />
-          </div>
+          <button type="button" id="btnRefreshStatus" class="btn-ghost">🔄 Verificar ahora</button>
         </div>
+        <div id="statusGrid" class="status-grid"></div>
 
-        <div class="conn-section" style="margin-top:18px;border-top:1px solid var(--line);padding-top:16px;">
-          <div class="conn-title">
-            <span>▶️ YouTube</span>
-            <span id="ytStatus" class="conn-badge">Sin conectar</span>
-          </div>
-          <p class="hint">Para subir y programar videos/Shorts en tu canal. Creá un proyecto en Google Cloud (te dejé el paso a paso en <code>GUIA-YOUTUBE.md</code>) y pegá estos 2 datos, después tocá "Conectar".</p>
-          <div class="field">
-            <label>Client ID (Google)</label>
-            <input id="ytClientId" type="text" autocomplete="off" placeholder="...apps.googleusercontent.com" />
-          </div>
-          <div class="field">
-            <label>Client Secret (Google)</label>
-            <input id="ytClientSecret" type="password" autocomplete="off" />
-          </div>
-          <div class="conn-foot-row">
-            <button id="btnConnectYoutube" class="btn-ghost">▶️ Conectar con YouTube</button>
-            <button id="btnTestYoutube" class="btn-ghost">Probar</button>
-          </div>
-          <div id="ytResult" class="conn-result"></div>
-        </div>
+        <div class="section-title section-gap">Configuración de cada red</div>
+        <p class="hint section-sub">Para cada red: pegá los datos de tu app, tocá <strong>Guardar</strong> y después <strong>Conectar</strong>. Las claves secretas guardadas no se muestran: si dejás el campo vacío, se mantiene la que ya estaba.</p>
 
-        <div class="conn-section" style="margin-top:18px;border-top:1px solid var(--line);padding-top:16px;">
-          <div class="conn-title">
-            <span>🧵 Threads</span>
-            <span id="thStatus" class="conn-badge">Sin conectar</span>
+        <!-- Facebook -->
+        <details class="conn-details" data-platform="facebook">
+          <summary><span class="conn-name">📘 Facebook (Página)</span><span class="badge" data-role="badge"></span></summary>
+          <div class="conn-body">
+            <div class="setup-hint">
+              <p>En <a href="#" data-open="https://developers.facebook.com/apps/">developers.facebook.com</a> → tu app → <strong>Inicio de sesión con Facebook → Configuración</strong>:</p>
+              <ul>
+                <li>Activá <strong>«Inicio de sesión con OAuth del cliente»</strong> (Client OAuth login) y <strong>«Inicio de sesión con OAuth en el navegador integrado»</strong> (Embedded browser OAuth login).</li>
+                <li>Agregá este <strong>URI de redireccionamiento de OAuth válido</strong>:</li>
+              </ul>
+              <div class="copy-row"><code data-uri="facebook"></code><button type="button" class="btn-small" data-copy="facebook">Copiar</button></div>
+              <p>Permisos que pide la app: pages_show_list, pages_read_engagement, pages_manage_posts y business_management.</p>
+            </div>
+            <div class="field-row">
+              <div class="field">
+                <label>Identificador de la app (App ID)</label>
+                <input type="text" data-field="appId" autocomplete="off" spellcheck="false" />
+              </div>
+              <div class="field">
+                <label>Clave secreta de la app</label>
+                <input type="password" data-field="appSecret" data-has="hasAppSecret" autocomplete="off" />
+              </div>
+            </div>
+            <div class="field">
+              <label>ID de la Página de Facebook (opcional si administrás una sola)</label>
+              <input type="text" data-field="pageId" autocomplete="off" spellcheck="false" />
+            </div>
+            <label class="check-line"><input type="checkbox" data-field="liveMode" /><span>Mi app de Meta ya está publicada (modo Live)</span></label>
+            <div class="conn-info" data-role="info"></div>
+            <div class="conn-actions">
+              <button type="button" class="btn-ghost" data-action="save">Guardar</button>
+              <button type="button" class="btn-primary btn-compact" data-action="connect">Conectar</button>
+              <button type="button" class="btn-danger" data-action="disconnect">Desconectar</button>
+            </div>
+            <div class="conn-result" data-role="result"></div>
+            <details class="paste-details">
+              <summary>Pegar token manualmente</summary>
+              <div class="paste-body">
+                <textarea rows="3" data-role="pasteInput" placeholder="Token de Página, de Usuario o de Usuario del sistema" autocomplete="off" spellcheck="false"></textarea>
+                <button type="button" class="btn-ghost" data-action="paste">Usar este token</button>
+              </div>
+            </details>
           </div>
-          <p class="hint">Identificador y clave de tu app de Threads + el token (lo generás en el panel de Meta → Threads, igual que Instagram). La app/secret sirven para renovar el token.</p>
-          <div class="field">
-            <label>Identificador de la app de Threads</label>
-            <input id="thAppId" type="text" autocomplete="off" />
-          </div>
-          <div class="field">
-            <label>Clave secreta de la app de Threads</label>
-            <input id="thAppSecret" type="password" autocomplete="off" />
-          </div>
-          <div class="field">
-            <label>Token de Threads</label>
-            <textarea id="thToken" rows="2" autocomplete="off"></textarea>
-          </div>
-          <div class="conn-foot-row">
-            <button id="btnTestThreads" class="btn-ghost">Probar Threads</button>
-          </div>
-          <div id="thResult" class="conn-result"></div>
-        </div>
+        </details>
 
-        <div class="conn-section" style="margin-top:18px;border-top:1px solid var(--line);padding-top:16px;">
-          <div class="conn-title">
-            <span>🎵 TikTok</span>
-            <span id="ttStatus" class="conn-badge">Sin conectar</span>
+        <!-- Instagram -->
+        <details class="conn-details" data-platform="instagram">
+          <summary><span class="conn-name">📸 Instagram (cuenta profesional)</span><span class="badge" data-role="badge"></span></summary>
+          <div class="conn-body">
+            <div class="setup-hint">
+              <p>En tu app de Meta → <strong>Instagram → API con inicio de sesión de Instagram</strong> → <strong>«Configuración del inicio de sesión para empresas»</strong>: pegá este URI de redireccionamiento:</p>
+              <div class="copy-row"><code data-uri="instagram"></code><button type="button" class="btn-small" data-copy="instagram">Copiar</button></div>
+              <p>Usá el identificador y la clave secreta <strong>de la app de Instagram</strong> (están en esa misma pantalla; no son los de Facebook).</p>
+            </div>
+            <div class="field-row">
+              <div class="field">
+                <label>Identificador de la app de Instagram</label>
+                <input type="text" data-field="igAppId" autocomplete="off" spellcheck="false" />
+              </div>
+              <div class="field">
+                <label>Clave secreta de la app de Instagram</label>
+                <input type="password" data-field="igAppSecret" data-has="hasIgAppSecret" autocomplete="off" />
+              </div>
+            </div>
+            <div class="field">
+              <label>URI de redireccionamiento (solo si registraste otra dirección)</label>
+              <input type="url" data-field="redirectUri" autocomplete="off" spellcheck="false" />
+            </div>
+            <div class="conn-info" data-role="info"></div>
+            <div class="conn-actions">
+              <button type="button" class="btn-ghost" data-action="save">Guardar</button>
+              <button type="button" class="btn-primary btn-compact" data-action="connect">Conectar</button>
+              <button type="button" class="btn-danger" data-action="disconnect">Desconectar</button>
+            </div>
+            <div class="conn-result" data-role="result"></div>
+            <details class="paste-details">
+              <summary>Pegar token manualmente</summary>
+              <div class="paste-body">
+                <textarea rows="3" data-role="pasteInput" placeholder="Token de Instagram generado en el panel de Meta" autocomplete="off" spellcheck="false"></textarea>
+                <button type="button" class="btn-ghost" data-action="paste">Usar este token</button>
+              </div>
+            </details>
           </div>
-          <p class="hint">Necesita una app de desarrollador de TikTok (Client Key + Secret). Sin auditar, el video va a tus <strong>borradores</strong> de TikTok y lo publicás vos. Cuando la app esté auditada, tildá "posteo directo".</p>
-          <div class="field">
-            <label>Client Key</label>
-            <input id="ttClientKey" type="text" autocomplete="off" />
+        </details>
+
+        <!-- Threads -->
+        <details class="conn-details" data-platform="threads">
+          <summary><span class="conn-name">🧵 Threads</span><span class="badge" data-role="badge"></span></summary>
+          <div class="conn-body">
+            <div class="setup-hint">
+              <p>En tu app de Meta → <strong>Casos de uso → Acceder a la API de Threads → Configuración</strong>: pegá este mismo URI en las URL de redireccionamiento:</p>
+              <div class="copy-row"><code data-uri="threads"></code><button type="button" class="btn-small" data-copy="threads">Copiar</button></div>
+              <ul>
+                <li>En <strong>Roles de la app → Evaluadores de Threads</strong>, agregá tu perfil de Threads.</li>
+                <li>Aceptá la invitación desde <a href="#" data-open="https://www.threads.com/settings">Threads</a> (Configuración → Cuenta → Permisos del sitio web → Invitaciones).</li>
+              </ul>
+            </div>
+            <div class="field-row">
+              <div class="field">
+                <label>Identificador de la app de Threads</label>
+                <input type="text" data-field="appId" autocomplete="off" spellcheck="false" />
+              </div>
+              <div class="field">
+                <label>Clave secreta de la app de Threads</label>
+                <input type="password" data-field="appSecret" data-has="hasAppSecret" autocomplete="off" />
+              </div>
+            </div>
+            <div class="field">
+              <label>URI de redireccionamiento (solo si registraste otra dirección)</label>
+              <input type="url" data-field="redirectUri" autocomplete="off" spellcheck="false" />
+            </div>
+            <div class="conn-info" data-role="info"></div>
+            <div class="conn-actions">
+              <button type="button" class="btn-ghost" data-action="save">Guardar</button>
+              <button type="button" class="btn-primary btn-compact" data-action="connect">Conectar</button>
+              <button type="button" class="btn-danger" data-action="disconnect">Desconectar</button>
+            </div>
+            <div class="conn-result" data-role="result"></div>
+            <details class="paste-details">
+              <summary>Pegar token manualmente</summary>
+              <div class="paste-body">
+                <textarea rows="3" data-role="pasteInput" placeholder="Token de Threads generado en el panel de Meta" autocomplete="off" spellcheck="false"></textarea>
+                <button type="button" class="btn-ghost" data-action="paste">Usar este token</button>
+              </div>
+            </details>
           </div>
-          <div class="field">
-            <label>Client Secret</label>
-            <input id="ttClientSecret" type="password" autocomplete="off" />
+        </details>
+
+        <!-- YouTube -->
+        <details class="conn-details" data-platform="youtube">
+          <summary><span class="conn-name">▶️ YouTube</span><span class="badge" data-role="badge"></span></summary>
+          <div class="conn-body">
+            <div class="setup-hint">
+              <p>En <a href="#" data-open="https://console.cloud.google.com/apis/credentials">console.cloud.google.com</a>:</p>
+              <ul>
+                <li>Habilitá <strong>YouTube Data API v3</strong> y creá un cliente OAuth de tipo <strong>«App de escritorio»</strong> (descargá el JSON: la clave secreta puede mostrarse una sola vez).</li>
+                <li>En la pantalla de consentimiento (<strong>Público</strong>) dejá el estado <strong>«En producción»</strong>. En «Prueba» el acceso vence a los 7 días.</li>
+                <li>Al tocar Conectar se abre tu navegador para autorizar.</li>
+                <li>Para que los videos puedan ser públicos, Google tiene que aprobar la <a href="#" data-open="https://support.google.com/youtube/contact/yt_api_form">auditoría de la API de YouTube</a>.</li>
+              </ul>
+              <p>Podés quitar el acceso cuando quieras desde <a href="#" data-open="https://myaccount.google.com/permissions">tu cuenta de Google</a>.</p>
+            </div>
+            <div class="field-row">
+              <div class="field">
+                <label>ID de cliente (Google)</label>
+                <input type="text" data-field="clientId" autocomplete="off" spellcheck="false" placeholder="...apps.googleusercontent.com" />
+              </div>
+              <div class="field">
+                <label>Secreto del cliente (Google)</label>
+                <input type="password" data-field="clientSecret" data-has="hasClientSecret" autocomplete="off" />
+              </div>
+            </div>
+            <label class="check-line"><input type="checkbox" data-field="auditApproved" /><span>Google aprobó la auditoría de la API de YouTube</span></label>
+            <div class="conn-info" data-role="info"></div>
+            <div class="conn-actions">
+              <button type="button" class="btn-ghost" data-action="save">Guardar</button>
+              <button type="button" class="btn-primary btn-compact" data-action="connect">Conectar</button>
+              <button type="button" class="btn-danger" data-action="disconnect">Desconectar</button>
+            </div>
+            <div class="conn-result" data-role="result"></div>
           </div>
-          <label class="check-line"><input type="checkbox" id="ttDirectPost" /> <span>Posteo directo (solo si tu app de TikTok ya está auditada)</span></label>
-          <div class="conn-foot-row">
-            <button id="btnConnectTiktok" class="btn-ghost">🎵 Conectar con TikTok</button>
-            <button id="btnTestTiktok" class="btn-ghost">Probar</button>
+        </details>
+
+        <!-- TikTok -->
+        <details class="conn-details" data-platform="tiktok">
+          <summary><span class="conn-name">🎵 TikTok</span><span class="badge" data-role="badge"></span></summary>
+          <div class="conn-body">
+            <div class="setup-hint">
+              <p>En <a href="#" data-open="https://developers.tiktok.com/apps/">developers.tiktok.com</a> → tu app → <strong>Login Kit → plataforma Desktop</strong>: registrá este Redirect URI:</p>
+              <div class="copy-row"><code data-uri="tiktok"></code><button type="button" class="btn-small" data-copy="tiktok">Copiar</button></div>
+              <ul>
+                <li>Productos: <strong>Login Kit</strong> y <strong>Content Posting API</strong>. Permisos: user.info.basic y video.upload (más video.publish cuando tengas posteo directo).</li>
+                <li>Al tocar Conectar se abre tu navegador para autorizar. TikTok pide volver a conectar una vez por año.</li>
+                <li>Sin auditoría, los videos van a tus borradores de TikTok y los terminás de publicar desde la app.</li>
+              </ul>
+            </div>
+            <div class="field-row">
+              <div class="field">
+                <label>Client Key</label>
+                <input type="text" data-field="clientKey" autocomplete="off" spellcheck="false" />
+              </div>
+              <div class="field">
+                <label>Client Secret</label>
+                <input type="password" data-field="clientSecret" data-has="hasClientSecret" autocomplete="off" />
+              </div>
+            </div>
+            <label class="check-line"><input type="checkbox" data-field="directPost" /><span>Mi app de TikTok pasó la auditoría (posteo directo público)</span></label>
+            <small class="hint">Si cambiás esta opción, tocá Conectar de nuevo para pedir los permisos que corresponden.</small>
+            <div class="conn-info" data-role="info"></div>
+            <div class="conn-actions">
+              <button type="button" class="btn-ghost" data-action="save">Guardar</button>
+              <button type="button" class="btn-primary btn-compact" data-action="connect">Conectar</button>
+              <button type="button" class="btn-danger" data-action="disconnect">Desconectar</button>
+            </div>
+            <div class="conn-result" data-role="result"></div>
           </div>
-          <div id="ttResult" class="conn-result"></div>
-        </div>
+        </details>
+
+        <!-- Cloudinary -->
+        <details class="conn-details" data-platform="hosting">
+          <summary><span class="conn-name">🖼️ Cloudinary (hosting de archivos)</span><span class="badge" data-role="badge"></span></summary>
+          <div class="conn-body">
+            <div class="setup-hint">
+              <p>Instagram, Threads y las historias de Facebook necesitan el archivo en una dirección pública. Creá una cuenta gratis en <a href="#" data-open="https://cloudinary.com/users/register_free">cloudinary.com</a> y en <a href="#" data-open="https://console.cloudinary.com/settings/upload">Settings → Upload → Upload presets</a> agregá un preset con <strong>Signing mode: Unsigned</strong>.</p>
+              <p>Si tenés el plan gratis, dejá vacíos los tamaños máximos (videos de hasta 100 MB e imágenes de hasta 10 MB).</p>
+            </div>
+            <div class="field-row">
+              <div class="field">
+                <label>Cloud name</label>
+                <input type="text" data-field="cloudName" autocomplete="off" spellcheck="false" />
+              </div>
+              <div class="field">
+                <label>Upload preset (sin firmar)</label>
+                <input type="text" data-field="uploadPreset" autocomplete="off" spellcheck="false" />
+              </div>
+            </div>
+            <div class="field-row">
+              <div class="field">
+                <label>Tamaño máximo de video (MB)</label>
+                <input type="number" min="1" step="1" data-field="maxVideoMB" placeholder="100" />
+              </div>
+              <div class="field">
+                <label>Tamaño máximo de imagen (MB)</label>
+                <input type="number" min="1" step="1" data-field="maxImageMB" placeholder="10" />
+              </div>
+            </div>
+            <div class="conn-info" data-role="info"></div>
+            <div class="conn-actions">
+              <button type="button" class="btn-ghost" data-action="save">Guardar</button>
+            </div>
+            <div class="conn-result" data-role="result"></div>
+          </div>
+        </details>
       </div>
       <div class="modal-foot">
-        <button id="btnTestMeta" class="btn-ghost">Probar conexión</button>
-        <button id="btnUpgradeToken" class="btn-ghost">🔄 Renovar token (60 días)</button>
+        <div class="legal-links">
+          <a href="#" data-link="privacyUrl">Política de privacidad</a> ·
+          <a href="#" data-link="termsUrl">Términos</a> ·
+          <a href="#" data-link="dataDeletionUrl">Eliminación de datos</a>
+        </div>
         <div class="spacer"></div>
-        <button id="btnSaveMeta" class="btn-primary">Guardar conexión</button>
+        <button type="button" id="connDone" class="btn-primary">Listo</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== MODAL RESULTADO DE PUBLICACIÓN ===================== -->
+  <div id="resultModal" class="modal-backdrop" hidden>
+    <div class="modal modal-small">
+      <div class="modal-head">
+        <h2 id="resultTitle">Resultado de la publicación</h2>
+        <button id="resultClose" class="icon-btn" title="Cerrar">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="resultList" class="result-list"></div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" id="resultOpenConn" class="btn-ghost" hidden>⚙ Abrir conexiones</button>
+        <div class="spacer"></div>
+        <button type="button" id="resultOk" class="btn-primary">Listo</button>
       </div>
     </div>
   </div>

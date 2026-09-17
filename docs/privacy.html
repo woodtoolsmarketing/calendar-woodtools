@@ -3,41 +3,252 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Política de Privacidad — Calendario WoodTools</title>
+  <title>Política de privacidad — Calendario WoodTools</title>
+  <meta name="description" content="Qué datos usa Calendario WoodTools, para qué, dónde se guardan, con quién se comparten y cómo eliminarlos." />
+  <link rel="icon" type="image/png" href="icon.png" />
   <style>
-    body { font-family: -apple-system, "Segoe UI", system-ui, sans-serif; max-width: 820px; margin: 40px auto; padding: 0 20px; color: #1a1a1a; line-height: 1.6; }
-    h1 { font-size: 28px; } h2 { font-size: 20px; margin-top: 28px; }
-    a { color: #1a73e8; }
-    .updated { color: #666; font-size: 14px; }
-    code { background: #f3f3f3; padding: 1px 5px; border-radius: 4px; }
+    :root { --pink: #E84A6F; --pink-ink: #B3375A; --copper: #B87333; --teal: #1F9E91; --ink: #1d1f24; --muted: #5a6070; --line: #e6e4e1; --soft: #f8f6f3; --bg: #ffffff; }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font-family: "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 16px; line-height: 1.65; }
+    img { max-width: 100%; height: auto; }
+    a { color: var(--pink-ink); text-underline-offset: 2px; overflow-wrap: anywhere; }
+    a:hover { color: var(--pink); }
+    h1, h2, h3 { line-height: 1.25; }
+    code { font-family: Consolas, "Cascadia Mono", Menlo, monospace; font-size: .88em; background: #f1efec; padding: 1px 6px; border-radius: 4px; overflow-wrap: anywhere; }
+    .container { max-width: 1080px; margin: 0 auto; padding-inline: 20px; }
+    .skip { position: absolute; left: -9999px; }
+    .skip:focus { left: 16px; top: 8px; z-index: 20; background: #fff; padding: 6px 10px; }
+    .site-header { background: #fff; border-bottom: 1px solid var(--line); }
+    .site-header .container { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 28px; padding-block: 12px; }
+    .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); font-weight: 700; font-size: 17px; text-decoration: none; }
+    .brand img { width: 36px; height: 36px; border-radius: 9px; }
+    .nav { display: flex; flex-wrap: wrap; gap: 4px 20px; font-size: 15px; }
+    .nav a { color: var(--muted); text-decoration: none; padding: 3px 0; border-bottom: 2px solid transparent; }
+    .nav a:hover { color: var(--ink); }
+    .nav a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--pink); }
+    .site-footer { margin-top: 72px; background: var(--soft); border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+    .site-footer .container { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 28px; padding-block: 26px; }
+    .site-footer p { margin: 0; }
+    .page-head { background: linear-gradient(135deg, var(--pink) 0%, var(--copper) 100%); color: #fff; }
+    .page-head .container { padding-block: 44px 38px; }
+    .page-head h1 { margin: 0 0 8px; font-size: clamp(28px, 5vw, 40px); }
+    .page-head p { margin: 0; max-width: 680px; opacity: .96; }
+    .doc { max-width: 800px; }
+    .doc h2 { font-size: 22px; margin: 44px 0 10px; }
+    .doc h3 { font-size: 17px; margin: 26px 0 6px; }
+    .doc li { margin: 4px 0; }
+    .toc { margin-top: 32px; padding: 16px 22px; background: var(--soft); border: 1px solid var(--line); border-radius: 12px; }
+    .toc strong { display: block; margin-bottom: 4px; }
+    .toc ol { margin: 0; padding-left: 20px; columns: 2 240px; column-gap: 32px; }
+    .note { margin: 18px 0; padding: 12px 16px; background: #eef7f5; border-left: 4px solid var(--teal); border-radius: 0 10px 10px 0; }
+    .table-wrap { overflow-x: auto; margin: 14px 0; border: 1px solid var(--line); border-radius: 10px; }
+    table { width: 100%; min-width: 620px; border-collapse: collapse; font-size: 15px; }
+    th, td { padding: 10px 14px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+    tr:last-child td { border-bottom: 0; }
+    th { background: var(--soft); font-weight: 600; }
+    .updated { color: var(--muted); font-size: 14px; margin-top: 28px; }
   </style>
 </head>
 <body>
-  <h1>Política de Privacidad</h1>
-  <p class="updated">Aplicación: <strong>Calendario WoodTools</strong> · Última actualización: junio de 2026</p>
+  <a class="skip" href="#contenido">Saltar al contenido</a>
+  <header class="site-header">
+    <div class="container">
+      <a class="brand" href="index.html"><img src="icon.png" alt="" width="36" height="36" />Calendario WoodTools</a>
+      <nav class="nav" aria-label="Principal">
+        <a href="index.html">Inicio</a>
+        <a href="privacy.html" aria-current="page">Política de privacidad</a>
+        <a href="terms.html">Términos</a>
+        <a href="data-deletion.html">Eliminación de datos</a>
+      </nav>
+    </div>
+  </header>
 
-  <p>Calendario WoodTools es una aplicación de escritorio que permite a su propietario (WoodTools) organizar tareas y programar la publicación de contenido en sus propias cuentas de redes sociales (TikTok, Instagram, Facebook, Threads y YouTube). Esta política explica qué datos maneja la aplicación y cómo.</p>
+  <main id="contenido">
+    <div class="page-head">
+      <div class="container">
+        <h1>Política de privacidad</h1>
+        <p>Qué datos usa Calendario WoodTools, para qué, dónde se guardan, con quién se comparten y cómo eliminarlos.</p>
+      </div>
+    </div>
 
-  <h2>1. Datos que maneja la aplicación</h2>
-  <ul>
-    <li><strong>Tareas y contenido programado:</strong> títulos, descripciones, fechas, horarios y archivos (imágenes y videos) que el usuario crea. Se guardan <strong>localmente</strong> en la computadora del usuario.</li>
-    <li><strong>Credenciales de las redes (tokens de acceso):</strong> se guardan <strong>cifradas</strong> en la computadora del usuario para poder publicar en su nombre. No se transmiten a ningún servidor nuestro.</li>
-    <li><strong>Contenido a publicar:</strong> los videos/imágenes y textos se envían directamente a las APIs oficiales de cada red social (TikTok, Meta, Google) únicamente para publicarlos en las cuentas del propio usuario.</li>
-  </ul>
+    <div class="container doc">
+      <p class="updated">Aplicación: <strong>Calendario WoodTools</strong> · Última actualización: 15 de septiembre de 2026</p>
 
-  <h2>2. Cómo usamos los datos</h2>
-  <p>Los datos se usan exclusivamente para la función de la aplicación: programar y publicar contenido en las cuentas del propio usuario. <strong>No vendemos, alquilamos ni compartimos</strong> los datos con terceros, ni los usamos con fines publicitarios o de seguimiento.</p>
+      <p>Calendario WoodTools (la «Aplicación») es una aplicación de escritorio para Windows de WoodTools. La usa el equipo de WoodTools para organizar tareas y publicar el contenido de la empresa en sus propias cuentas de Facebook, Instagram, Threads, YouTube y TikTok. Esta política explica qué datos obtiene la Aplicación, para qué los usa, dónde los guarda, con quién los comparte y cómo se eliminan. Al conectar una cuenta o usar la Aplicación, aceptás esta política.</p>
 
-  <h2>3. Almacenamiento</h2>
-  <p>Toda la información (tareas, archivos y credenciales cifradas) se almacena <strong>localmente</strong> en el dispositivo del usuario. La aplicación no tiene servidores propios que recolecten o guarden datos de los usuarios.</p>
+      <nav class="toc" aria-label="Contenido de la página">
+        <strong>Contenido</strong>
+        <ol>
+          <li><a href="#resumen">Resumen</a></li>
+          <li><a href="#datos">Datos a los que accede</a></li>
+          <li><a href="#uso">Cómo usamos los datos</a></li>
+          <li><a href="#almacenamiento">Dónde se guardan</a></li>
+          <li><a href="#terceros">Con quién se comparten</a></li>
+          <li><a href="#google">Servicios de API de YouTube y Google</a></li>
+          <li><a href="#conservacion">Conservación y eliminación</a></li>
+          <li><a href="#revocar">Cómo quitar el acceso</a></li>
+          <li><a href="#seguridad">Seguridad</a></li>
+          <li><a href="#menores">Menores de edad</a></li>
+          <li><a href="#cambios">Cambios a esta política</a></li>
+          <li><a href="#contacto">Contacto</a></li>
+        </ol>
+      </nav>
 
-  <h2>4. Servicios de terceros</h2>
-  <p>Para publicar contenido, la aplicación se conecta a las APIs oficiales de: TikTok, Meta (Instagram, Facebook, Threads) y Google (YouTube). El uso de esos servicios está regido por sus respectivas políticas de privacidad.</p>
+      <h2 id="resumen">1. Resumen</h2>
+      <div class="note">
+        <ul>
+          <li>La Aplicación accede solo a lo necesario para publicar el contenido propio de WoodTools en sus propias cuentas.</li>
+          <li>Todo se guarda en la computadora donde está instalada. WoodTools no tiene servidores que reciban esos datos.</li>
+          <li>No vendemos ni compartimos datos, y no hay publicidad ni analíticas.</li>
+          <li>Podés desconectar las cuentas y borrar todo en cualquier momento (ver <a href="data-deletion.html">Eliminación de datos</a>).</li>
+        </ul>
+      </div>
 
-  <h2>5. Eliminación de datos</h2>
-  <p>El usuario puede eliminar todos los datos en cualquier momento desinstalando la aplicación o borrando los archivos locales de la app. Puede revocar el acceso de la aplicación a sus cuentas desde la configuración de seguridad de cada red social.</p>
+      <h2 id="datos">2. Datos a los que accede la Aplicación</h2>
 
-  <h2>6. Contacto</h2>
-  <p>Para consultas sobre esta política: <a href="mailto:woodtoolsmarketing@gmail.com">woodtoolsmarketing@gmail.com</a></p>
+      <h3>2.1 Datos que carga el equipo</h3>
+      <ul>
+        <li><strong>Tareas:</strong> títulos, notas, fechas, horarios, nivel de importancia, recurrencia y plantillas.</li>
+        <li><strong>Contenido a publicar:</strong> textos, links, ajustes de cada red y los archivos elegidos (imágenes y videos). La Aplicación guarda una copia de cada archivo en su carpeta.</li>
+        <li><strong>Configuración:</strong> los identificadores de las apps de desarrollador de WoodTools en cada plataforma y los datos de su cuenta de Cloudinary (nombre de la nube y del upload preset).</li>
+        <li><strong>Resultados:</strong> el ID, el enlace o el error de cada publicación.</li>
+      </ul>
+
+      <h3>2.2 Datos que entregan las plataformas al conectar una cuenta</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Plataforma</th><th>Permisos</th><th>Datos que obtiene</th><th>Para qué</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Facebook</strong> (Meta)</td>
+              <td><code>pages_show_list</code>, <code>pages_read_engagement</code>, <code>pages_manage_posts</code>, <code>business_management</code></td>
+              <td>Lista de Páginas que administra la persona (nombre, ID y tareas permitidas) y token de acceso de la Página elegida, con su tipo y vencimiento.</td>
+              <td>Elegir la Página de WoodTools y publicar en ella. El token temporal del inicio de sesión se usa solo para obtener el token de la Página y no se guarda.</td>
+            </tr>
+            <tr>
+              <td><strong>Instagram</strong> (Meta)</td>
+              <td><code>instagram_business_basic</code>, <code>instagram_business_content_publish</code></td>
+              <td>ID y nombre de usuario de la cuenta profesional, y token de acceso con su fecha de emisión y vencimiento.</td>
+              <td>Mostrar la cuenta conectada y publicar fotos, reels e historias.</td>
+            </tr>
+            <tr>
+              <td><strong>Threads</strong> (Meta)</td>
+              <td><code>threads_basic</code>, <code>threads_content_publish</code></td>
+              <td>ID y nombre de usuario del perfil, y token de acceso con su vencimiento.</td>
+              <td>Mostrar el perfil conectado y publicar posts.</td>
+            </tr>
+            <tr>
+              <td><strong>YouTube</strong> (Google)</td>
+              <td><code>youtube.upload</code>, <code>youtube.readonly</code></td>
+              <td>Nombre e ID del canal, token de actualización y permisos otorgados.</td>
+              <td><code>youtube.upload</code>: subir videos y miniaturas al canal. <code>youtube.readonly</code>: mostrar el canal conectado y comprobar el estado de los videos subidos.</td>
+            </tr>
+            <tr>
+              <td><strong>TikTok</strong></td>
+              <td><code>user.info.basic</code>, <code>video.upload</code>, <code>video.publish</code></td>
+              <td>Identificador (open_id), nombre visible, avatar y opciones de publicación del creador (niveles de privacidad disponibles, si permite comentarios, dúos y stitch, y duración máxima), y tokens de acceso y actualización con su vencimiento.</td>
+              <td>Mostrar la cuenta conectada, ofrecer solo las opciones que TikTok permite y publicar videos o enviarlos a borradores.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>2.3 Lo que la Aplicación no hace</h3>
+      <ul>
+        <li>No ve ni guarda contraseñas: cada inicio de sesión se hace en la página oficial de la plataforma.</li>
+        <li>No lee mensajes, comentarios, seguidores, contactos, estadísticas ni datos de cuentas de otras personas.</li>
+        <li>No accede al correo, a Drive ni a otros servicios de la cuenta de Google.</li>
+        <li>No usa la cámara, el micrófono ni la ubicación.</li>
+      </ul>
+
+      <h2 id="uso">3. Cómo usamos los datos</h2>
+      <p>Usamos los datos exclusivamente para:</p>
+      <ul>
+        <li>publicar el contenido que el equipo programó, en las cuentas de WoodTools, en el momento indicado;</li>
+        <li>mostrar el estado de cada conexión y avisar cuando haya que reconectar;</li>
+        <li>renovar automáticamente los accesos para que las publicaciones programadas no fallen.</li>
+      </ul>
+      <p>La Aplicación no publica nada que el usuario no haya programado o enviado con «Publicar ahora». Los datos no se usan para publicidad, perfiles de usuarios ni entrenamiento de modelos de inteligencia artificial, y no se venden.</p>
+
+      <h2 id="almacenamiento">4. Dónde se guardan</h2>
+      <ul>
+        <li><strong>Solo en la computadora</strong> donde está instalada la Aplicación, dentro del perfil de Windows del usuario:
+          <ul>
+            <li><code>%APPDATA%\calendario-interactive</code>: tareas, copias de los archivos, configuración, credenciales de conexión y sus copias de respaldo.</li>
+            <li><code>%LOCALAPPDATA%\CalendarioWoodTools</code>: copia de respaldo de las credenciales de conexión.</li>
+          </ul>
+        </li>
+        <li>Esas carpetas están protegidas por los permisos de Windows: solo esa cuenta de usuario y los administradores de la computadora pueden leerlas. Recomendamos usar la Aplicación en una cuenta de Windows con contraseña y no copiar esos archivos a otros lugares.</li>
+        <li><strong>Cookies y datos en el dispositivo:</strong> la ventana de inicio de sesión de Facebook, Instagram y Threads guarda las cookies de sesión de esas plataformas dentro de <code>%APPDATA%\calendario-interactive</code>, para no pedir el inicio de sesión cada vez. Google y TikTok usan el navegador del sistema, con sus propias cookies. La Aplicación no usa cookies propias, identificadores publicitarios ni herramientas de analítica, y este sitio web tampoco.</li>
+        <li>WoodTools <strong>no tiene servidores</strong> que reciban o guarden estos datos. El sitio <code>calendario-woodtools.onrender.com</code> es informativo; su página de retorno del inicio de sesión solo muestra un mensaje y no guarda ningún dato.</li>
+      </ul>
+
+      <h2 id="terceros">5. Con quién se comparten</h2>
+      <ul>
+        <li><strong>Con la plataforma de destino, solo al publicar o conectar:</strong> el contenido y los datos necesarios se envían a la API oficial de la red elegida, que los trata según su propia política: <a href="https://www.facebook.com/privacy/policy/">Política de privacidad de Meta</a> (Facebook, Instagram y Threads), <a href="http://www.google.com/policies/privacy">Política de Privacidad de Google</a> (YouTube) y <a href="https://www.tiktok.com/legal/privacy-policy">Política de privacidad de TikTok</a>.</li>
+        <li><strong>Cloudinary:</strong> las fotos y videos para Instagram, Threads e historias de Facebook se suben a la cuenta de Cloudinary de WoodTools para que Meta pueda descargarlos. Se trata del mismo contenido que se va a publicar. Ver la <a href="https://cloudinary.com/privacy">política de privacidad de Cloudinary</a>.</li>
+        <li><strong>Nadie más.</strong> No vendemos, alquilamos ni cedemos datos a terceros, salvo que una ley o una autoridad competente lo exija.</li>
+      </ul>
+
+      <h2 id="google">6. Servicios de API de YouTube y Google</h2>
+      <ul>
+        <li>La Aplicación usa los <strong>Servicios de API de YouTube</strong> para subir videos al canal de WoodTools. Al usar las funciones de YouTube, aceptás las <a href="https://www.youtube.com/t/terms">Condiciones del Servicio de YouTube</a>.</li>
+        <li>Los datos obtenidos mediante los Servicios de API de YouTube también quedan alcanzados por la <a href="http://www.google.com/policies/privacy">Política de Privacidad de Google</a> (http://www.google.com/policies/privacy).</li>
+        <li>El uso y la transferencia de la información recibida de las API de Google cumplen la <a href="https://developers.google.com/terms/api-services-user-data-policy">Política de Datos del Usuario de los Servicios de API de Google</a>, incluidos los requisitos de uso limitado.</li>
+        <li>Podés quitarle a la Aplicación el acceso a tu cuenta de Google en cualquier momento desde <a href="https://security.google.com/settings/security/permissions">https://security.google.com/settings/security/permissions</a>.</li>
+      </ul>
+
+      <h2 id="conservacion">7. Conservación y eliminación</h2>
+      <ul>
+        <li><strong>Tokens y datos de las cuentas:</strong> se conservan mientras la cuenta está conectada. La Aplicación los renueva y actualiza automáticamente; los datos obtenidos de las API se actualizan o se eliminan dentro de los 30 días.</li>
+        <li><strong>Desconectar:</strong> al tocar «Desconectar» en la sección Conexiones, los tokens de esa red se borran en el momento.</li>
+        <li><strong>Acceso revocado:</strong> si quitás el acceso desde la plataforma, la Aplicación deja de poder usarlo y elimina los tokens y datos de esa cuenta dentro de los 7 días.</li>
+        <li><strong>Tareas y archivos:</strong> se conservan hasta que el usuario los borra o desinstala la Aplicación y elimina sus carpetas.</li>
+        <li><strong>Archivos en Cloudinary:</strong> se alojan solo para que las redes los descarguen, y WoodTools los elimina periódicamente de su cuenta de Cloudinary.</li>
+      </ul>
+      <p>Los pasos para borrar todo están en <a href="data-deletion.html">Eliminación de datos</a>.</p>
+
+      <h2 id="revocar">8. Cómo quitar el acceso</h2>
+      <ul>
+        <li><strong>En la Aplicación:</strong> Conexiones → elegí la red → Desconectar.</li>
+        <li><strong>Google / YouTube:</strong> <a href="https://security.google.com/settings/security/permissions">security.google.com/settings/security/permissions</a> → Calendario WoodTools → Quitar acceso.</li>
+        <li><strong>Facebook:</strong> Configuración y privacidad → Configuración → <a href="https://www.facebook.com/settings/?tab=business_tools">Integraciones comerciales</a> → Calendario WoodTools → Eliminar.</li>
+        <li><strong>Instagram:</strong> Configuración → Permisos del sitio web → Apps y sitios web (o Integraciones comerciales) → Calendario WoodTools → Eliminar.</li>
+        <li><strong>Threads:</strong> Configuración → Cuenta → Permisos del sitio web → Calendario WoodTools → Eliminar.</li>
+        <li><strong>TikTok:</strong> Perfil → menú → Configuración y privacidad → Seguridad y permisos → Administrar apps → Calendario WoodTools → Eliminar acceso.</li>
+      </ul>
+
+      <h2 id="seguridad">9. Seguridad</h2>
+      <ul>
+        <li>Las cuentas se conectan con los inicios de sesión oficiales (OAuth) de cada plataforma. Google y TikTok se abren en el navegador del sistema, con verificación de estado y PKCE.</li>
+        <li>Toda comunicación con las APIs se hace por HTTPS.</li>
+        <li>La Aplicación no escribe tokens ni claves en sus registros.</li>
+      </ul>
+
+      <h2 id="menores">10. Menores de edad</h2>
+      <p>La Aplicación es una herramienta de trabajo para el equipo de WoodTools y no está dirigida a menores de 18 años.</p>
+
+      <h2 id="cambios">11. Cambios a esta política</h2>
+      <p>Si cambiamos esta política, publicaremos la nueva versión en esta página con su fecha de actualización.</p>
+
+      <h2 id="contacto">12. Contacto</h2>
+      <p>Para consultas sobre esta política: <a href="mailto:woodtoolsmarketing@gmail.com">woodtoolsmarketing@gmail.com</a></p>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <nav class="nav" aria-label="Pie de página">
+        <a href="index.html">Inicio</a>
+        <a href="privacy.html" aria-current="page">Política de privacidad</a>
+        <a href="terms.html">Términos</a>
+        <a href="data-deletion.html">Eliminación de datos</a>
+      </nav>
+      <p>Calendario WoodTools · Contacto: <a href="mailto:woodtoolsmarketing@gmail.com">woodtoolsmarketing@gmail.com</a></p>
+    </div>
+  </footer>
 </body>
 </html>

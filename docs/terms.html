@@ -3,37 +3,164 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Términos de Servicio — Calendario WoodTools</title>
+  <title>Términos del servicio — Calendario WoodTools</title>
+  <meta name="description" content="Condiciones de uso de Calendario WoodTools, incluidos los servicios de YouTube, Meta, TikTok y Cloudinary." />
+  <link rel="icon" type="image/png" href="icon.png" />
   <style>
-    body { font-family: -apple-system, "Segoe UI", system-ui, sans-serif; max-width: 820px; margin: 40px auto; padding: 0 20px; color: #1a1a1a; line-height: 1.6; }
-    h1 { font-size: 28px; } h2 { font-size: 20px; margin-top: 28px; }
-    a { color: #1a73e8; }
-    .updated { color: #666; font-size: 14px; }
+    :root { --pink: #E84A6F; --pink-ink: #B3375A; --copper: #B87333; --teal: #1F9E91; --ink: #1d1f24; --muted: #5a6070; --line: #e6e4e1; --soft: #f8f6f3; --bg: #ffffff; }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font-family: "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 16px; line-height: 1.65; }
+    img { max-width: 100%; height: auto; }
+    a { color: var(--pink-ink); text-underline-offset: 2px; overflow-wrap: anywhere; }
+    a:hover { color: var(--pink); }
+    h1, h2, h3 { line-height: 1.25; }
+    code { font-family: Consolas, "Cascadia Mono", Menlo, monospace; font-size: .88em; background: #f1efec; padding: 1px 6px; border-radius: 4px; overflow-wrap: anywhere; }
+    .container { max-width: 1080px; margin: 0 auto; padding-inline: 20px; }
+    .skip { position: absolute; left: -9999px; }
+    .skip:focus { left: 16px; top: 8px; z-index: 20; background: #fff; padding: 6px 10px; }
+    .site-header { background: #fff; border-bottom: 1px solid var(--line); }
+    .site-header .container { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 28px; padding-block: 12px; }
+    .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); font-weight: 700; font-size: 17px; text-decoration: none; }
+    .brand img { width: 36px; height: 36px; border-radius: 9px; }
+    .nav { display: flex; flex-wrap: wrap; gap: 4px 20px; font-size: 15px; }
+    .nav a { color: var(--muted); text-decoration: none; padding: 3px 0; border-bottom: 2px solid transparent; }
+    .nav a:hover { color: var(--ink); }
+    .nav a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--pink); }
+    .site-footer { margin-top: 72px; background: var(--soft); border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+    .site-footer .container { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 28px; padding-block: 26px; }
+    .site-footer p { margin: 0; }
+    .page-head { background: linear-gradient(135deg, var(--pink) 0%, var(--copper) 100%); color: #fff; }
+    .page-head .container { padding-block: 44px 38px; }
+    .page-head h1 { margin: 0 0 8px; font-size: clamp(28px, 5vw, 40px); }
+    .page-head p { margin: 0; max-width: 680px; opacity: .96; }
+    .doc { max-width: 800px; }
+    .doc h2 { font-size: 22px; margin: 44px 0 10px; }
+    .doc h3 { font-size: 17px; margin: 26px 0 6px; }
+    .doc li { margin: 4px 0; }
+    .toc { margin-top: 32px; padding: 16px 22px; background: var(--soft); border: 1px solid var(--line); border-radius: 12px; }
+    .toc strong { display: block; margin-bottom: 4px; }
+    .toc ol { margin: 0; padding-left: 20px; columns: 2 240px; column-gap: 32px; }
+    .note { margin: 18px 0; padding: 12px 16px; background: #eef7f5; border-left: 4px solid var(--teal); border-radius: 0 10px 10px 0; }
+    .updated { color: var(--muted); font-size: 14px; margin-top: 28px; }
   </style>
 </head>
 <body>
-  <h1>Términos de Servicio</h1>
-  <p class="updated">Aplicación: <strong>Calendario WoodTools</strong> · Última actualización: junio de 2026</p>
+  <a class="skip" href="#contenido">Saltar al contenido</a>
+  <header class="site-header">
+    <div class="container">
+      <a class="brand" href="index.html"><img src="icon.png" alt="" width="36" height="36" />Calendario WoodTools</a>
+      <nav class="nav" aria-label="Principal">
+        <a href="index.html">Inicio</a>
+        <a href="privacy.html">Política de privacidad</a>
+        <a href="terms.html" aria-current="page">Términos</a>
+        <a href="data-deletion.html">Eliminación de datos</a>
+      </nav>
+    </div>
+  </header>
 
-  <h2>1. Aceptación</h2>
-  <p>Al usar la aplicación Calendario WoodTools (la "Aplicación"), el usuario acepta estos Términos de Servicio. La Aplicación es una herramienta de escritorio para organizar tareas y programar la publicación de contenido en las cuentas de redes sociales del propio usuario.</p>
+  <main id="contenido">
+    <div class="page-head">
+      <div class="container">
+        <h1>Términos del servicio</h1>
+        <p>Condiciones de uso de Calendario WoodTools.</p>
+      </div>
+    </div>
 
-  <h2>2. Uso permitido</h2>
-  <p>El usuario se compromete a usar la Aplicación únicamente para publicar contenido en cuentas que le pertenecen o que administra con autorización, y a cumplir con los términos y políticas de cada red social (TikTok, Meta, Google).</p>
+    <div class="container doc">
+      <p class="updated">Aplicación: <strong>Calendario WoodTools</strong> · Última actualización: 15 de septiembre de 2026</p>
 
-  <h2>3. Responsabilidad del contenido</h2>
-  <p>El usuario es el único responsable del contenido que crea, programa y publica a través de la Aplicación. La Aplicación solo actúa como herramienta para enviar ese contenido a las APIs oficiales de las redes sociales en nombre del usuario.</p>
+      <nav class="toc" aria-label="Contenido de la página">
+        <strong>Contenido</strong>
+        <ol>
+          <li><a href="#aceptacion">Aceptación</a></li>
+          <li><a href="#aplicacion">Qué es la Aplicación</a></li>
+          <li><a href="#terceros">Servicios de terceros</a></li>
+          <li><a href="#uso">Uso aceptable</a></li>
+          <li><a href="#contenido-usuario">Contenido y consentimiento</a></li>
+          <li><a href="#cuentas">Cuentas y seguridad</a></li>
+          <li><a href="#disponibilidad">Funcionamiento y disponibilidad</a></li>
+          <li><a href="#garantia">Sin garantía</a></li>
+          <li><a href="#responsabilidad">Limitación de responsabilidad</a></li>
+          <li><a href="#privacidad">Privacidad</a></li>
+          <li><a href="#cambios">Cambios</a></li>
+          <li><a href="#contacto">Contacto</a></li>
+        </ol>
+      </nav>
 
-  <h2>4. Credenciales y seguridad</h2>
-  <p>El usuario es responsable de mantener seguras sus credenciales de acceso. La Aplicación guarda los tokens de forma cifrada localmente y no los comparte con terceros.</p>
+      <h2 id="aceptacion">1. Aceptación</h2>
+      <p>Al instalar o usar Calendario WoodTools (la «Aplicación»), o al conectar una cuenta, aceptás estos Términos del servicio y la <a href="privacy.html">Política de privacidad</a>. Si no estás de acuerdo, no uses la Aplicación.</p>
 
-  <h2>5. Disponibilidad</h2>
-  <p>La Aplicación depende de las APIs de terceros (TikTok, Meta, Google). No garantizamos la disponibilidad continua de esos servicios ni nos responsabilizamos por cambios o interrupciones de las plataformas externas.</p>
+      <h2 id="aplicacion">2. Qué es la Aplicación</h2>
+      <p>La Aplicación es una herramienta de escritorio para Windows de WoodTools. El equipo de WoodTools la usa para organizar tareas y programar y publicar el contenido de la empresa en sus propias cuentas de Facebook, Instagram, Threads, YouTube y TikTok, mediante las APIs oficiales de cada plataforma.</p>
 
-  <h2>6. Limitación de responsabilidad</h2>
-  <p>La Aplicación se proporciona "tal cual". En la medida que lo permita la ley, no nos hacemos responsables por daños derivados del uso o la imposibilidad de uso de la Aplicación.</p>
+      <h2 id="terceros">3. Servicios de terceros</h2>
 
-  <h2>7. Contacto</h2>
-  <p>Para consultas: <a href="mailto:woodtoolsmarketing@gmail.com">woodtoolsmarketing@gmail.com</a></p>
+      <h3>3.1 YouTube</h3>
+      <div class="note">
+        <p>La Aplicación usa los <strong>Servicios de API de YouTube</strong>. Al usar las funciones de YouTube de la Aplicación, aceptás quedar obligado por las <a href="https://www.youtube.com/t/terms">Condiciones del Servicio de YouTube</a> (https://www.youtube.com/t/terms).</p>
+      </div>
+      <p>El tratamiento de los datos de YouTube también está alcanzado por la <a href="http://www.google.com/policies/privacy">Política de Privacidad de Google</a>. Cómo usa la Aplicación esos datos se explica en nuestra <a href="privacy.html#google">Política de privacidad</a>.</p>
+
+      <h3>3.2 Meta (Facebook, Instagram y Threads)</h3>
+      <p>Las funciones de Facebook, Instagram y Threads usan las APIs de Meta. Su uso también está sujeto a las <a href="https://developers.facebook.com/terms/">Condiciones de la Plataforma de Meta</a>, las <a href="https://developers.facebook.com/devpolicy/">Políticas para desarrolladores de Meta</a>, las <a href="https://www.facebook.com/terms.php">Condiciones del servicio de Facebook</a>, las <a href="https://help.instagram.com/581066165581870">Condiciones de uso de Instagram</a> y las condiciones complementarias de Threads.</p>
+
+      <h3>3.3 TikTok</h3>
+      <p>Las funciones de TikTok usan Login Kit y Content Posting API. Su uso también está sujeto a las <a href="https://www.tiktok.com/legal/terms-of-service">Condiciones del servicio de TikTok</a> y a sus <a href="https://www.tiktok.com/community-guidelines">Normas de la comunidad</a>. Al publicar en TikTok aceptás la <a href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/en">Confirmación de uso de música</a> y, si marcás contenido de marca, la <a href="https://www.tiktok.com/legal/page/global/bc-policy/en">Política de contenido de marca</a>.</p>
+
+      <h3>3.4 Cloudinary</h3>
+      <p>Para Instagram, Threads e historias de Facebook, los archivos se alojan temporalmente en la cuenta de Cloudinary de WoodTools, sujeta a las <a href="https://cloudinary.com/tou">Condiciones de uso de Cloudinary</a>.</p>
+
+      <p>Estos servicios pertenecen a terceros. WoodTools no los controla, y pueden cambiar, limitarse o dejar de estar disponibles.</p>
+
+      <h2 id="uso">4. Uso aceptable</h2>
+      <p>Al usar la Aplicación te comprometés a:</p>
+      <ul>
+        <li>conectar y publicar solo en cuentas de WoodTools, o en cuentas que administres con autorización de WoodTools;</li>
+        <li>cumplir las condiciones, normas de la comunidad y políticas de cada plataforma, incluidas las de derechos de autor y música;</li>
+        <li>declarar el contenido comercial cuando corresponda (por ejemplo, la divulgación de contenido comercial de TikTok);</li>
+        <li>tener los derechos necesarios sobre todo lo que publiques;</li>
+        <li>no usar la Aplicación para spam, contenido engañoso o ilegal, ni para eludir límites, revisiones o restricciones de las plataformas;</li>
+        <li>no extraer, copiar ni compartir las credenciales de las apps de desarrollador de WoodTools.</li>
+      </ul>
+
+      <h2 id="contenido-usuario">5. Contenido y consentimiento</h2>
+      <p>Sos responsable del contenido que creás, programás y publicás. La Aplicación solo envía lo que cargaste, con los ajustes que elegiste (por ejemplo, la visibilidad en YouTube o la privacidad y las interacciones en TikTok), y no modifica tus textos sin tu consentimiento.</p>
+      <p>Programar una publicación o tocar «Publicar ahora» significa que autorizás el envío de ese contenido a la red elegida en el momento indicado. Podés cancelarlo editando o borrando la tarea antes de esa hora.</p>
+
+      <h2 id="cuentas">6. Cuentas y seguridad</h2>
+      <p>Las cuentas se conectan con los inicios de sesión oficiales de cada plataforma, y la Aplicación nunca ve tus contraseñas. Los tokens de acceso se guardan en la computadora, dentro del perfil de Windows del usuario, y no se comparten con terceros. Sos responsable de proteger el acceso a esa computadora y a esa cuenta de Windows. Podés desconectar cualquier cuenta en cualquier momento.</p>
+
+      <h2 id="disponibilidad">7. Funcionamiento y disponibilidad</h2>
+      <p>La publicación automática necesita la computadora encendida y conectada a internet a la hora programada. La Aplicación depende de APIs de terceros que pueden cambiar, aplicar límites o rechazar publicaciones, por lo que no garantizamos que cada publicación se realice en el horario exacto ni que las plataformas estén siempre disponibles.</p>
+
+      <h2 id="garantia">8. Sin garantía</h2>
+      <p>La Aplicación se ofrece «tal cual» y «según disponibilidad», sin garantías de ningún tipo, expresas o implícitas, incluidas las de funcionamiento ininterrumpido, ausencia de errores o adecuación a un fin determinado.</p>
+
+      <h2 id="responsabilidad">9. Limitación de responsabilidad</h2>
+      <p>En la máxima medida permitida por la ley, WoodTools no es responsable por daños directos o indirectos derivados del uso o de la imposibilidad de usar la Aplicación, incluidos publicaciones no realizadas, demoradas o rechazadas, pérdida de datos o decisiones de las plataformas de terceros.</p>
+
+      <h2 id="privacidad">10. Privacidad</h2>
+      <p>Qué datos usa la Aplicación y cómo eliminarlos se explica en la <a href="privacy.html">Política de privacidad</a> y en <a href="data-deletion.html">Eliminación de datos</a>.</p>
+
+      <h2 id="cambios">11. Cambios</h2>
+      <p>Podemos actualizar estos términos. La versión vigente es la publicada en esta página con su fecha de actualización.</p>
+
+      <h2 id="contacto">12. Contacto</h2>
+      <p>Para consultas: <a href="mailto:woodtoolsmarketing@gmail.com">woodtoolsmarketing@gmail.com</a></p>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <nav class="nav" aria-label="Pie de página">
+        <a href="index.html">Inicio</a>
+        <a href="privacy.html">Política de privacidad</a>
+        <a href="terms.html" aria-current="page">Términos</a>
+        <a href="data-deletion.html">Eliminación de datos</a>
+      </nav>
+      <p>Calendario WoodTools · Contacto: <a href="mailto:woodtoolsmarketing@gmail.com">woodtoolsmarketing@gmail.com</a></p>
+    </div>
+  </footer>
 </body>
 </html>
