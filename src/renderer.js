@@ -894,10 +894,13 @@ function syncStoryLink() {
   $('#storyLinkWrap').hidden = !$('#fStoryLink').checked;
 }
 function syncAutoFields() {
-  const auto = getRadio('ftype') === 'content' && getRadio('pubmode') === 'auto';
+  const isContent = getRadio('ftype') === 'content';
+  const auto = isContent && getRadio('pubmode') === 'auto';
   $('#autoFields').hidden = !auto;
-  $('#btnPublishNow').hidden = !(auto && editing);
   const plats = selectedPlatforms();
+  // "Publicar ahora" publica en el momento cualquier tarea de contenido con al menos una red
+  // elegida (no hace falta el modo automático ni haber guardado la tarea antes).
+  $('#btnPublishNow').hidden = !(isContent && plats.length);
   $('#ytFields').hidden = !(auto && plats.includes('YouTube'));
 
   const ttVisible = auto && plats.includes('TikTok');
@@ -1465,7 +1468,9 @@ function publishConfirmText(task) {
 }
 
 async function publishNow() {
-  if (!editing) return;
+  // Se puede publicar en el momento incluso una tarea nueva sin guardar:
+  // readForm() le crea un id propio y más abajo se guarda antes de publicar.
+  if ($('#modal').hidden) return;
   await waitTiktokView();
   const task = readForm();
   if (!task.title) { $('#fTitle').focus(); return; }

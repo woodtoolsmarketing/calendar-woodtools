@@ -17,6 +17,7 @@ const hosting = require('./integrations/hosting');
 const youtube = require('./integrations/youtube');
 const threads = require('./integrations/threads');
 const tiktok = require('./integrations/tiktok');
+const transcode = require('./integrations/transcode');
 
 const APP_ID = 'com.woodtools.calendario';
 const ICON_PATH = path.join(__dirname, 'assets', 'icon.png');
@@ -1102,11 +1103,40 @@ async function uploadWithCache(taskId, slot, filePath) {
       return info;
     }
   }
-  const info = await hosting.uploadPublic(filePath, hostingCreds);
+  // Si es un video que no entra en el plan de Cloudinary, la app lo comprime sola antes de subir.
+  const uploadPath = slot === 'media' ? await fitVideoToHosting(filePath, hostingCreds) : filePath;
+  const info = await hosting.uploadPublic(uploadPath, hostingCreds);
   if (sig && info && info.url) {
+    // La caché se indexa por el archivo ORIGINAL (aunque hayamos subido el comprimido): así
+    // al volver a publicar la misma tarea reutiliza la URL sin comprimir de nuevo.
     saveMediaCache(taskId, slot, { path: filePath, size: sig.size, mtimeMs: sig.mtimeMs, at: new Date().toISOString(), info });
   }
   return info;
+}
+
+/*
+ * Si `filePath` es un video más pesado que el límite de Cloudinary, lo comprime con ffmpeg a un
+ * archivo temporal por debajo del límite y devuelve esa ruta. Si no hace falta (o no se puede
+ * comprimir), devuelve el original y deja que hosting.uploadPublic dé el error de tamaño claro.
+ */
+async function fitVideoToHosting(filePath, hostingCreds) {
+  try {
+    if (!transcode.isVideo(filePath) || !transcode.available()) return filePath;
+    const size = fs.statSync(filePath).size;
+    const limitMB = Number(hostingCreds && hostingCreds.maxVideoMB) || 100;
+    const limitBytes = limitMB * 1000 * 1000;
+    if (size <= limitBytes) return filePath;
+    const outDir = path.join(app.getPath('temp'), 'calendario-wt-media');
+    transcode.pruneOld(outDir);
+    const target = Math.floor(limitBytes * 0.85); // margen bajo el límite (y bajo el corte chunked de 95 MB)
+    const out = await transcode.compressToLimit(filePath, target, outDir);
+    console.log('[transcode] video comprimido para publicar:',
+      Math.round(size / 1e6) + ' MB ->', Math.round(fs.statSync(out).size / 1e6) + ' MB');
+    return out;
+  } catch (e) {
+    console.error('[transcode] no se pudo comprimir, se sube el original:', errMsg(e));
+    return filePath;
+  }
 }
 
 /*
