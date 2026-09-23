@@ -4,7 +4,7 @@
  * planificador de recordatorios, notificaciones por nivel de importancia,
  * conexiones con las redes y publicación automática (con reintentos).
  */
-const { app, BrowserWindow, Tray, Menu, ipcMain, Notification, nativeImage, dialog, shell } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, Notification, nativeImage, dialog, shell, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
@@ -99,11 +99,15 @@ function isAppIndexUrl(url) {
 }
 
 function createMainWindow() {
+  // La ventana no debe superar el área útil de la pantalla: en pantallas de laptop
+  // (p. ej. 1366×768) una ventana de 820 px de alto no entra y el borde superior
+  // (barra de título + encabezado del calendario) queda fuera → "se corta arriba".
+  const { width: awW, height: awH } = screen.getPrimaryDisplay().workAreaSize;
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 820,
-    minWidth: 940,
-    minHeight: 600,
+    width: Math.min(1280, awW),
+    height: Math.min(820, awH),
+    minWidth: Math.min(940, awW),
+    minHeight: Math.min(600, awH),
     title: 'Calendario WoodTools',
     icon: ICON_PATH,
     backgroundColor: '#14161c',
@@ -116,6 +120,12 @@ function createMainWindow() {
   });
 
   mainWindow.setMenuBarVisibility(false);
+
+  // En pantallas donde la ventana natural no entra con margen (área útil chica, p. ej.
+  // laptops de 1366×768), abrirla maximizada: ocupa exactamente el área útil y así la
+  // parte superior (barra + encabezado) nunca queda cortada. Si la cierran/restauran,
+  // el tamaño normal (acotado arriba) también entra en la pantalla.
+  if (!START_HIDDEN && (awH < 820 || awW < 1280)) mainWindow.maximize();
 
   // Seguridad: la ventana no abre ventanas nuevas ni navega fuera de la app.
   // Los links permitidos (https y hosts conocidos) se abren en el navegador del sistema.

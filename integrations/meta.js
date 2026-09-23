@@ -1098,6 +1098,35 @@ async function fbCreate(call, isOk, verify) {
   throw ambiguousError('Facebook');
 }
 
+/*
+ * Portada propia de un Reel de Facebook. El finish de /video_reels NO acepta portada:
+ * se sube aparte al edge POST /{video-id}/thumbnails con la imagen como archivo (source,
+ * multipart) e is_preferred=true. El reel puede tardar en procesarse, así que se reintenta.
+ * Nunca lanza: el reel ya está publicado; si falla, devuelve un aviso (queda el cuadro auto).
+ */
+async function fbSetReelCover(videoId, token, thumbPath) {
+  if (!thumbPath || !/\.(jpe?g|png)$/i.test(thumbPath)) return null; // sin portada propia
+  let size;
+  try { size = fs.statSync(thumbPath).size; }
+  catch (_) { return 'Facebook: no encontré el archivo de la portada del reel; quedó el cuadro automático del video.'; }
+  if (size > FB_THUMB_MAX_BYTES) return 'Facebook: la portada del reel supera los 10 MB; quedó el cuadro automático del video.';
+  let lastErr = '';
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await sleep(5000); // esperar a que el reel termine de procesarse
+    try {
+      const res = await fbPostMultipart(`${seg(videoId)}/thumbnails`, token, {
+        source: await filePart(thumbPath),
+        is_preferred: 'true',
+      });
+      if (!res || res.success !== false) return null; // ok
+      lastErr = 'Facebook respondió que no pudo';
+    } catch (e) {
+      lastErr = (e && e.message) || 'error inesperado';
+    }
+  }
+  return 'Facebook: no se pudo poner la portada del reel (' + lastErr + '); quedó el cuadro automático del video.';
+}
+
 async function publishFacebook(creds, task) {
   const c = creds || {};
   if (!c.pageId || !c.pageToken) {
@@ -1197,6 +1226,9 @@ async function publishFacebook(creds, task) {
       () => findRecentVideo(pageId, token, caption, since, start.video_id),
     );
     if (!found && fin.success === false) throw userError('Facebook: no se pudo publicar el reel.', { transient: true });
+    // Portada propia: el finish no la acepta, se sube aparte (no corta la publicación si falla)
+    const coverWarn = await fbSetReelCover(start.video_id, token, task.thumbPath);
+    if (coverWarn) warnings.push(coverWarn);
     return result(String(start.video_id), `https://www.facebook.com/reel/${start.video_id}`, found);
   }
 

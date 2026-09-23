@@ -114,8 +114,10 @@ button.pub-chip:focus-visible { outline: 2px solid var(--accent); outline-offset
 .footer-note { color: var(--text-dim); font-size: 11px; line-height: 1.4; border-top: 1px solid var(--line); padding-top: 10px; }
 
 /* ===================== MAIN / CALENDAR ===================== */
-.main { flex: 1; padding: 16px; overflow: hidden; }
-#calendar { height: 100%; }
+/* Columna flexible: el calendario llena el alto disponible, pero si la ventana es
+   baja el área hace scroll (con un mínimo legible) en vez de recortar las semanas. */
+.main { flex: 1; padding: 16px; overflow: auto; display: flex; flex-direction: column; }
+#calendar { flex: 1; min-height: 540px; }
 
 /* Tema oscuro para FullCalendar */
 .fc { --fc-border-color: var(--line); --fc-page-bg-color: var(--bg); color: var(--text); height: 100%; }
