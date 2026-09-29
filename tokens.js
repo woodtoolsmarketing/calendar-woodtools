@@ -26,7 +26,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const RECONNECT_REMIND_MS = DAY_MS; // recordatorio de "reconectá" como mucho una vez por día
 
 // Orden en que se revisan (secuencial)
-const KEYS = ['facebook', 'instagram', 'threads', 'youtube', 'tiktok', 'hosting'];
+const KEYS = ['facebook', 'instagram', 'threads', 'youtube', 'hosting'];
 
 const DEFS = {
   facebook: { label: 'Facebook', storage: 'meta', maintain: (c) => meta.maintainFacebook(c) },

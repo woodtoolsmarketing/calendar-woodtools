@@ -1,0 +1,47 @@
+{
+  "_comment": "PLANTILLA de la semilla de credenciales. Copiá este archivo a 'connections.seed.json' (en esta misma carpeta) y completá con tus valores REALES. 'connections.seed.json' esta en .gitignore y NUNCA debe subirse al repo porque contiene tokens de produccion.",
+  "threads": {
+    "appId": "TU_APP_ID",
+    "appSecret": "TU_APP_SECRET",
+    "token": "TU_ACCESS_TOKEN",
+    "userId": "TU_USER_ID",
+    "username": "tu_usuario",
+    "issuedAt": 0,
+    "expiresAt": 0,
+    "lastRefreshAt": 0,
+    "dataAccessExpiresAt": 0
+  },
+  "meta": {
+    "appId": "TU_APP_ID",
+    "appSecret": "TU_APP_SECRET",
+    "pageId": "TU_PAGE_ID",
+    "liveMode": true,
+    "pageName": "Nombre de la pagina",
+    "pageToken": "TU_PAGE_TOKEN",
+    "pageTokenType": "PAGE",
+    "igToken": "TU_IG_TOKEN",
+    "igUserId": "TU_IG_USER_ID",
+    "igUsername": "tu_usuario_ig",
+    "igTokenIssuedAt": 0,
+    "igTokenExpiresAt": 0,
+    "igLastRefreshAt": 0,
+    "igAppId": "TU_IG_APP_ID",
+    "igAppSecret": "TU_IG_APP_SECRET"
+  },
+  "hosting": {
+    "cloudName": "TU_CLOUD_NAME",
+    "uploadPreset": "TU_UPLOAD_PRESET"
+  },
+  "youtube": {
+    "clientId": "TU_CLIENT_ID.apps.googleusercontent.com",
+    "clientSecret": "TU_CLIENT_SECRET",
+    "auditApproved": true,
+    "refreshToken": "TU_REFRESH_TOKEN",
+    "channel": "Nombre del canal",
+    "channelId": "TU_CHANNEL_ID",
+    "scope": "https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/youtube.upload",
+    "connectedAt": 0,
+    "needsReconnect": false,
+    "lastRefreshAt": 0
+  }
+}

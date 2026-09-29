@@ -14,6 +14,10 @@ connections.json
 connections.bak.json
 calendario-data.json
 
+# Semilla de credenciales: contiene tokens/secretos REALES de producción.
+# Queda en el disco para que el build la empaquete, pero NUNCA se sube al repo.
+seed/connections.seed.json
+
 # Sistema
 .DS_Store
 Thumbs.db

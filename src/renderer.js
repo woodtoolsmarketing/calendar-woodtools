@@ -12,7 +12,6 @@ const CONN_PLATFORMS = [
   { key: 'instagram', label: 'Instagram', icon: '📸' },
   { key: 'threads', label: 'Threads', icon: '🧵' },
   { key: 'youtube', label: 'YouTube', icon: '▶️' },
-  { key: 'tiktok', label: 'TikTok', icon: '🎵' },
   { key: 'hosting', label: 'Cloudinary', icon: '🖼️' },
 ];
 

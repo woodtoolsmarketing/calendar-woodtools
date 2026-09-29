@@ -618,7 +618,7 @@ function broadcastChanged() {
 // ----------------------------------------------------------------------------
 // Conexiones: vistas (SIN secretos ni tokens), guardar, conectar, pegar token, desconectar
 // ----------------------------------------------------------------------------
-const CONN_PLATFORMS = ['facebook', 'instagram', 'threads', 'youtube', 'tiktok', 'hosting'];
+const CONN_PLATFORMS = ['facebook', 'instagram', 'threads', 'youtube', 'hosting'];
 const STORAGE_OF = { facebook: 'meta', instagram: 'meta', threads: 'threads', youtube: 'youtube', tiktok: 'tiktok', hosting: 'hosting' };
 
 // Campos que el renderer puede guardar (todo lo demás se ignora)
@@ -994,7 +994,7 @@ ipcMain.handle('app:info', () => ({
 // ----------------------------------------------------------------------------
 // Publicación de contenido (automática y manual): por red, sin duplicar y con reintentos
 // ----------------------------------------------------------------------------
-const PUBLISH_PLATFORMS = ['Facebook', 'Instagram', 'Threads', 'YouTube', 'TikTok'];
+const PUBLISH_PLATFORMS = ['Facebook', 'Instagram', 'Threads', 'YouTube'];
 const RETRY_DELAYS_MS = [5 * 60000, 15 * 60000, 60 * 60000, 3 * 60 * 60000]; // 5 min, 15 min, 1 h, 3 h
 const MAX_RETRIES = RETRY_DELAYS_MS.length;
 const MAX_PUBLISH_LOG = 200;
@@ -1243,8 +1243,8 @@ async function dispatchPublish(task, { skip = [], onStart = null, onResults = nu
     report(list);
   }
 
-  // 3) Threads, YouTube, TikTok
-  const others = [['Threads', threads, 'threads'], ['YouTube', youtube, 'youtube'], ['TikTok', tiktok, 'tiktok']];
+  // 3) Threads, YouTube
+  const others = [['Threads', threads, 'threads'], ['YouTube', youtube, 'youtube']];
   for (const [name, mod, storage] of others) {
     if (!pending.includes(name) || byPlatform[name]) continue;
     start([name]);

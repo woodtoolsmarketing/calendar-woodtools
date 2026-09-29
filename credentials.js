@@ -25,6 +25,11 @@ const legacy = path.join(dir, 'connections.dat'); // viejo archivo cifrado
 const snapDir = path.join(dir, 'respaldos-conexiones');
 const mirrorDir = path.join(process.env.LOCALAPPDATA || app.getPath('home'), 'CalendarioWoodTools');
 const mirror = path.join(mirrorDir, 'connections.mirror.json');
+// Semilla de credenciales incluida DENTRO de la app (asar). En una PC nueva —sin archivo
+// principal ni ningún respaldo— deja el programa ya conectado, para poder instalarlo en
+// varias máquinas sin reconectar cada red. Se copia a userData la primera vez y ya no se
+// vuelve a usar (a partir de ahí manda el archivo local de esa PC).
+const seedFile = path.join(__dirname, 'seed', 'connections.seed.json');
 const MAX_SNAPSHOTS = 20;
 
 let lastRecovery = null; // { from, at } si hubo que restaurar
@@ -78,6 +83,18 @@ function readLegacy() {
   }
 }
 
+function readSeed() {
+  try {
+    if (!fs.existsSync(seedFile)) return null;
+    const txt = fs.readFileSync(seedFile, 'utf-8');
+    if (!txt.trim()) return null;
+    const d = JSON.parse(txt);
+    return hasData(d) ? d : null;
+  } catch (_) {
+    return null; // sin semilla o ilegible: se arranca vacío
+  }
+}
+
 function readAll() {
   // 1) archivo principal
   const main = tryParse(file);
@@ -98,6 +115,15 @@ function readAll() {
       console.warn('[credentials] credenciales restauradas desde', from);
       return data;
     }
+  }
+
+  // 3) semilla incluida en la app (primer arranque en una PC nueva): deja el programa conectado
+  const seed = readSeed();
+  if (seed) {
+    try { writeRaw(seed); } catch (e) { console.error('[credentials] no pude escribir la semilla:', e.message); }
+    lastRecovery = { from: 'credenciales incluidas en la app', at: new Date().toISOString() };
+    console.warn('[credentials] credenciales iniciales cargadas desde la semilla incluida');
+    return seed;
   }
   return {};
 }
