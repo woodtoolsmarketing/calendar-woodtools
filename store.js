@@ -16,6 +16,8 @@ function normalize(data) {
   return {
     tasks: data && Array.isArray(data.tasks) ? data.tasks : [],
     templates: data && Array.isArray(data.templates) ? data.templates : [],
+    // Ids de fechas imprescindibles ya sembradas (para no re-agregar una que se borró)
+    seededBuiltinIds: data && Array.isArray(data.seededBuiltinIds) ? data.seededBuiltinIds : [],
   };
 }
 

@@ -10,6 +10,7 @@ const fs = require('fs');
 const { pathToFileURL } = require('url');
 const store = require('./store');
 const Recurrence = require('./recurrence');
+const efemerides = require('./efemerides');
 const credentials = require('./credentials');
 const tokens = require('./tokens');
 const meta = require('./integrations/meta');
@@ -367,6 +368,31 @@ function checkDue() {
   }
 }
 
+// Siembra las fechas imprescindibles (UOM / industria) la primera vez.
+// Si el usuario borra alguna, su id queda en seededBuiltinIds y no se vuelve a agregar.
+function seedBuiltinDates() {
+  try {
+    const data = store.read();
+    const seeded = Array.isArray(data.seededBuiltinIds) ? data.seededBuiltinIds.slice() : [];
+    const existing = new Set((data.tasks || []).map((t) => t && t.id));
+    let changed = false;
+    for (const t of efemerides.buildBuiltinTasks()) {
+      if (existing.has(t.id) || seeded.includes(t.id)) continue;
+      data.tasks.push(t);
+      seeded.push(t.id);
+      changed = true;
+    }
+    if (changed) {
+      data.seededBuiltinIds = seeded;
+      store.write(data);
+      broadcastChanged();
+      console.log('[efemerides] fechas imprescindibles cargadas por defecto');
+    }
+  } catch (e) {
+    console.error('[efemerides] no se pudieron sembrar las fechas:', e.message);
+  }
+}
+
 // Devuelve true si modificó la tarea
 function processTaskDue(task, now) {
   if (!task || !task.start) return false;
@@ -462,8 +488,11 @@ ipcMain.handle('data:get', () => store.read());
 
 ipcMain.handle('data:save', (_e, data) => {
   // Guardado completo: los campos del proceso principal se toman de lo guardado (la copia del renderer puede ser vieja)
-  const prevTasks = new Map(store.read().tasks.map((t) => [t && t.id, t]));
+  const prevData = store.read();
+  const prevTasks = new Map(prevData.tasks.map((t) => [t && t.id, t]));
   const next = data && typeof data === 'object' ? { ...data } : {};
+  // La marca de fechas sembradas la maneja sólo el proceso principal (el renderer no la toca)
+  next.seededBuiltinIds = Array.isArray(prevData.seededBuiltinIds) ? prevData.seededBuiltinIds : [];
   if (Array.isArray(next.tasks)) {
     next.tasks = next.tasks.map((task) => {
       if (!task || typeof task !== 'object') return task;
@@ -1669,6 +1698,9 @@ app.whenReady().then(() => {
 
   createMainWindow();
   createTray();
+
+  // Fechas imprescindibles (UOM / industria) cargadas por defecto
+  seedBuiltinDates();
 
   // Mantenimiento de conexiones: a los 8 s y cada 6 h
   tokens.init({

@@ -4,7 +4,7 @@
  * y el renderer (calendario). Se carga con require() en main y con <script> en
  * el renderer (donde queda en window.Recurrence).
  *
- * Recurrencias soportadas: none | daily | weekly | monthly
+ * Recurrencias soportadas: none | daily | weekly | monthly | yearly
  */
 (function (global) {
   function pad(n) { return String(n).padStart(2, '0'); }
@@ -52,6 +52,9 @@
       }
     } else if (freq === 'monthly') {
       matches = base.getDate() === date.getDate();
+    } else if (freq === 'yearly') {
+      // Mismo día y mes cada año (ej. efemérides: 7 de septiembre)
+      matches = base.getMonth() === date.getMonth() && base.getDate() === date.getDate();
     }
     if (!matches) return null;
 
