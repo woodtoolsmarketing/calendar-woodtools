@@ -395,6 +395,48 @@ input[type="checkbox"] { accent-color: var(--accent); }
 .result-warn { color: var(--warn-text); font-size: 12px; line-height: 1.4; }
 .result-link { font-size: 12px; align-self: flex-start; }
 
+/* ===================== MODAL PUBLICIDAD (Meta/IG Ads) ===================== */
+.ads-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.ads-totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.ads-card {
+  background: var(--bg-3); border: 1px solid var(--line); border-left: 4px solid var(--accent);
+  border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 3px; min-width: 0;
+}
+.ads-card-label { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-dim); }
+.ads-card-spend { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.ads-card-sub { font-size: 12px; color: var(--text-dim); overflow-wrap: anywhere; }
+.ads-campaigns { display: flex; flex-direction: column; gap: 8px; }
+.ads-camp {
+  background: var(--bg-3); border: 1px solid var(--line); border-left: 4px solid var(--line);
+  border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px;
+}
+.ads-camp.on { border-left-color: var(--import); }
+.ads-camp-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ads-camp-name { font-weight: 700; overflow-wrap: anywhere; }
+.ads-camp-meta { font-size: 12px; color: var(--text-dim); }
+.ads-camp-metrics { display: flex; flex-wrap: wrap; gap: 2px 18px; font-size: 13px; }
+.ads-badge { font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
+.ads-badge.on { background: var(--ok-bg); color: #6ee7d8; }
+.ads-badge.off { background: rgba(255,255,255,.08); color: var(--text-dim); }
+.ads-camp-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.ads-act { white-space: nowrap; }
+.confirm-msg { font-size: 14px; line-height: 1.55; white-space: pre-wrap; margin: 0; }
+
+/* Promocionar una publicación (Fase 3) */
+.ads-boost { background: var(--bg-3); border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.ads-boost .field-row { display: flex; gap: 12px; flex-wrap: wrap; }
+.ads-boost .field { flex: 1; min-width: 140px; }
+.ads-post-list { display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow-y: auto; }
+.ads-post {
+  display: flex; gap: 10px; align-items: center; cursor: pointer;
+  background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
+}
+.ads-post.sel { border-color: var(--accent); background: rgba(76,139,245,.1); }
+.ads-post img { width: 48px; height: 48px; border-radius: 6px; object-fit: cover; background: var(--bg); flex-shrink: 0; }
+.ads-post-msg { font-size: 13px; line-height: 1.35; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.ads-post-date { font-size: 11px; color: var(--text-dim); }
+.ads-boost-summary { font-size: 13px; color: var(--text-dim); line-height: 1.5; }
+
 /* Scrollbars */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: #333a49; border-radius: 6px; }

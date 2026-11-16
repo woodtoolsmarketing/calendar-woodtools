@@ -2170,6 +2170,25 @@ function wire() {
   $('#btnRefreshStatus').onclick = refreshStatusNow;
   $('#connModal').addEventListener('click', onConnModalClick);
 
+  // Publicidad (Meta/Instagram Ads)
+  $('#btnAds').onclick = () => openAds();
+  $('#adsClose').onclick = closeAds;
+  closeOnBackdrop('#adsModal', closeAds);
+  $('#adsListBtn').onclick = () => adsListAccounts();
+  $('#adsConnectBtn').onclick = () => adsConnect();
+  $('#adsRefreshBtn').onclick = () => renderAdsOverviewForced();
+  $('#adsDisconnectBtn').onclick = () => adsDisconnect();
+  $('#adsCampaigns').addEventListener('click', onAdsCampaignClick);
+  $('#adsConfirmOk').onclick = () => adsConfirmClose(true);
+  $('#adsConfirmCancel').onclick = () => adsConfirmClose(false);
+  $('#adsConfirmX').onclick = () => adsConfirmClose(false);
+  closeOnBackdrop('#adsConfirmModal', () => adsConfirmClose(false));
+  $('#adsBoostLoad').onclick = () => loadBoostPosts();
+  $('#adsBoostPosts').addEventListener('click', onBoostPostClick);
+  $('#adsBoostCreate').onclick = () => createBoostNow();
+  if (typeof window.api.onOpenAds === 'function') window.api.onOpenAds(() => openAds());
+  if (typeof window.api.onAdsChanged === 'function') window.api.onAdsChanged(() => { if (!$('#adsModal').hidden && !$('#adsOverview').hidden) renderAdsOverview(); });
+
   // Resultado de publicación
   $('#resultClose').onclick = closeResults;
   $('#resultOk').onclick = closeResults;
@@ -2196,10 +2215,343 @@ function wire() {
 
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
-    if (!$('#resultModal').hidden) closeResults();
+    if (!$('#adsConfirmModal').hidden) adsConfirmClose(false);
+    else if (!$('#resultModal').hidden) closeResults();
+    else if (!$('#adsModal').hidden) closeAds();
     else if (!$('#connModal').hidden) closeConnections();
     else if (!$('#modal').hidden) closeForm();
   });
+}
+
+// --------------------------------------------------------------------------
+// Publicidad (Meta / Instagram Ads) — Fase 1: ver rendimiento
+// --------------------------------------------------------------------------
+function openAds() {
+  $('#adsModal').hidden = false;
+  loadAds();
+}
+function closeAds() {
+  $('#adsModal').hidden = true;
+}
+
+let adsCampaignsById = {};
+let adsCurrency = 'ARS';
+let adsConfirmResolver = null;
+
+// Confirmación reutilizable (devuelve Promise<boolean>)
+function adsConfirm({ title = 'Confirmar', message = '', okLabel = 'Confirmar', danger = false } = {}) {
+  return new Promise((resolve) => {
+    adsConfirmResolver = resolve;
+    $('#adsConfirmTitle').textContent = title;
+    $('#adsConfirmMsg').textContent = message;
+    const ok = $('#adsConfirmOk');
+    ok.textContent = okLabel;
+    ok.classList.toggle('btn-danger', !!danger);
+    ok.classList.toggle('btn-primary', !danger);
+    $('#adsConfirmModal').hidden = false;
+  });
+}
+function adsConfirmClose(result) {
+  $('#adsConfirmModal').hidden = true;
+  const r = adsConfirmResolver;
+  adsConfirmResolver = null;
+  if (r) r(result);
+}
+function adsShowError(msg) {
+  const err = $('#adsError');
+  err.textContent = '⚠️ ' + msg;
+  err.hidden = false;
+}
+
+function setAdsView(which) {
+  $('#adsSetup').hidden = which !== 'setup';
+  $('#adsOverview').hidden = which !== 'overview';
+  $('#adsLoading').hidden = which !== 'loading';
+}
+
+async function loadAds() {
+  setAdsView('loading');
+  let status;
+  try { status = await window.api.adsStatus(); } catch (_) { status = { connected: false }; }
+  if (!status || !status.connected) { setAdsView('setup'); return; }
+  await renderAdsOverview();
+}
+
+function adsMoney(n, cur) {
+  const v = Number(n) || 0;
+  try { return new Intl.NumberFormat('es-AR', { style: 'currency', currency: cur || 'ARS', maximumFractionDigits: 2 }).format(v); }
+  catch (_) { return '$' + v.toFixed(2); }
+}
+function adsInt(n) { return new Intl.NumberFormat('es-AR').format(Math.round(Number(n) || 0)); }
+
+function adsResultsText(results) {
+  const map = [['compras', 'compras'], ['leads', 'clientes pot.'], ['mensajes', 'mensajes'], ['registros', 'registros'], ['linkClicks', 'clics'], ['interacciones', 'interacc.']];
+  const parts = [];
+  for (const [k, lbl] of map) if (results && results[k] > 0) parts.push(adsInt(results[k]) + ' ' + lbl);
+  return parts.length ? parts.join(' · ') : '—';
+}
+
+function adsStatusLabel(s) {
+  const map = { PAUSED: 'Pausada', CAMPAIGN_PAUSED: 'Pausada', ADSET_PAUSED: 'Pausada', ARCHIVED: 'Archivada', DELETED: 'Eliminada', IN_PROCESS: 'En proceso', WITH_ISSUES: 'Con problemas', PENDING_REVIEW: 'En revisión', DISAPPROVED: 'Rechazada', PENDING_BILLING_INFO: 'Falta pago' };
+  return map[s] || (s || 'Inactiva');
+}
+function adsObjectiveLabel(o) {
+  const map = { OUTCOME_SALES: 'Ventas', OUTCOME_LEADS: 'Clientes potenciales', OUTCOME_ENGAGEMENT: 'Interacción', OUTCOME_AWARENESS: 'Reconocimiento', OUTCOME_TRAFFIC: 'Tráfico', OUTCOME_APP_PROMOTION: 'Promoción de app' };
+  return map[o] || (o || 'Campaña');
+}
+
+function adsTotalCard(label, t, cur) {
+  t = t || {};
+  const ctr = t.ctr ? ' · CTR ' + Number(t.ctr).toFixed(1) + '%' : '';
+  return `<div class="ads-card">
+    <div class="ads-card-label">${label}</div>
+    <div class="ads-card-spend">${adsMoney(t.spend, cur)}</div>
+    <div class="ads-card-sub">${adsInt(t.impressions)} impres. · ${adsInt(t.clicks)} clics${ctr}</div>
+    <div class="ads-card-sub">${adsResultsText(t.results)}</div>
+  </div>`;
+}
+
+function adsCampaignActionBtn(c) {
+  if (c.running) return `<button type="button" class="btn-small ads-act" data-ads-action="pause" data-camp-id="${c.id}">⏸ Pausar</button>`;
+  if (['PAUSED', 'CAMPAIGN_PAUSED', 'ADSET_PAUSED'].includes(c.effectiveStatus)) {
+    return `<button type="button" class="btn-small ads-act" data-ads-action="activate" data-camp-id="${c.id}">▶ Activar</button>`;
+  }
+  return '';
+}
+
+function adsCampaignRow(c, cur) {
+  const t7 = c.last7 || {};
+  const today = c.today || null;
+  const badge = c.running
+    ? '<span class="ads-badge on">● Activa</span>'
+    : '<span class="ads-badge off">⏸ ' + escapeHtml(adsStatusLabel(c.effectiveStatus)) + '</span>';
+  const budget = c.dailyBudget ? ' · Presup. diario ' + adsMoney(c.dailyBudget, cur) : '';
+  const todayLine = today ? 'Hoy: ' + adsMoney(today.spend, cur) + ' · ' + adsResultsText(today.results) : 'Hoy: sin gasto';
+  return `<div class="ads-camp${c.running ? ' on' : ''}">
+    <div class="ads-camp-head">
+      <span class="ads-camp-name">${escapeHtml(c.name || '(sin nombre)')}</span>
+      <span class="ads-camp-right">${badge}${adsCampaignActionBtn(c)}</span>
+    </div>
+    <div class="ads-camp-meta">${escapeHtml(adsObjectiveLabel(c.objective))}${budget}</div>
+    <div class="ads-camp-metrics">
+      <span>${todayLine}</span>
+      <span>7 días: ${adsMoney(t7.spend, cur)} · ${adsInt(t7.impressions)} impres. · ${adsResultsText(t7.results)}</span>
+    </div>
+  </div>`;
+}
+
+// Click en Pausar/Activar (delegado en el contenedor de campañas)
+async function onAdsCampaignClick(e) {
+  const btn = e.target.closest('[data-ads-action]');
+  if (!btn) return;
+  const id = btn.dataset.campId;
+  const action = btn.dataset.adsAction;
+  const c = adsCampaignsById[id];
+  if (!c) return;
+  const cur = adsCurrency || 'ARS';
+  const toActive = action === 'activate';
+  const budgetTxt = (toActive && c.dailyBudget) ? ' Va a gastar su presupuesto de ' + adsMoney(c.dailyBudget, cur) + ' por día.' : '';
+  const ok = await adsConfirm({
+    title: toActive ? 'Activar campaña' : 'Pausar campaña',
+    message: toActive
+      ? `Vas a ACTIVAR «${c.name}».${budgetTxt}\n\nVa a empezar a gastar plata real. ¿Confirmás?`
+      : `Vas a PAUSAR «${c.name}».\n\nDeja de mostrarse y de gastar. ¿Confirmás?`,
+    okLabel: toActive ? 'Sí, activar' : 'Sí, pausar',
+    danger: toActive,
+  });
+  if (!ok) return;
+  btn.disabled = true; btn.textContent = toActive ? 'Activando…' : 'Pausando…';
+  try {
+    const res = await window.api.adsSetStatus({ campaignId: id, status: toActive ? 'ACTIVE' : 'PAUSED' });
+    if (!res.ok) { adsShowError(res.error); btn.disabled = false; return; }
+    await renderAdsOverview(res.overview);
+  } catch (err) {
+    adsShowError((err && err.message) || String(err));
+    btn.disabled = false;
+  }
+}
+
+// --- Promocionar una publicación (Fase 3) ---
+let adsBoostPosts = [];
+let adsBoostSelectedId = null;
+
+async function loadBoostPosts() {
+  const btn = $('#adsBoostLoad');
+  const msg = $('#adsBoostMsg'); msg.hidden = true;
+  btn.disabled = true; btn.textContent = 'Cargando…';
+  try {
+    const res = await window.api.adsListPosts();
+    if (!res.ok) { msg.className = 'warn-line'; msg.textContent = res.error; msg.hidden = false; return; }
+    adsBoostPosts = res.posts || [];
+    renderBoostPosts();
+    $('#adsBoostPosts').hidden = false;
+  } catch (e) {
+    msg.className = 'warn-line'; msg.textContent = 'No se pudieron cargar las publicaciones: ' + ((e && e.message) || e); msg.hidden = false;
+  } finally {
+    btn.disabled = false; btn.textContent = adsBoostPosts.length ? 'Actualizar lista' : 'Elegir una publicación…';
+  }
+}
+
+function renderBoostPosts() {
+  const list = $('#adsBoostPosts');
+  if (!adsBoostPosts.length) { list.innerHTML = '<p class="hint">No encontré publicaciones recientes en tu Página.</p>'; return; }
+  list.innerHTML = adsBoostPosts.map((p) => {
+    const sel = p.id === adsBoostSelectedId ? ' sel' : '';
+    const img = p.picture ? `<img src="${escapeHtml(p.picture)}" alt="" />` : '';
+    const date = p.createdTime ? formatDate(new Date(p.createdTime).getTime()) : '';
+    return `<div class="ads-post${sel}" data-post-id="${escapeHtml(p.id)}">
+      ${img}
+      <div>
+        <div class="ads-post-msg">${escapeHtml(p.message)}</div>
+        <div class="ads-post-date">${escapeHtml(date)}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function onBoostPostClick(e) {
+  const el = e.target.closest('[data-post-id]');
+  if (!el) return;
+  adsBoostSelectedId = el.dataset.postId;
+  renderBoostPosts();
+  $('#adsBoostForm').hidden = false;
+}
+
+async function createBoostNow() {
+  const msg = $('#adsBoostMsg'); msg.hidden = true;
+  const post = adsBoostPosts.find((p) => p.id === adsBoostSelectedId);
+  if (!post) { msg.className = 'warn-line'; msg.textContent = 'Elegí una publicación.'; msg.hidden = false; return; }
+  const budget = Number($('#adsBoostBudget').value);
+  const days = parseInt($('#adsBoostDays').value, 10) || 7;
+  const objective = $('#adsBoostObjective').value;
+  const cur = adsCurrency || 'ARS';
+  if (!(budget > 0)) { msg.className = 'warn-line'; msg.textContent = 'Poné un presupuesto diario válido.'; msg.hidden = false; return; }
+  const ok = await adsConfirm({
+    title: 'Crear promoción (en pausa)',
+    message: `Vas a crear una campaña EN PAUSA para promocionar esta publicación.\n\nPresupuesto: ${adsMoney(budget, cur)} por día · ${days} días.\n\nNO gasta nada hasta que la actives desde «Campañas». ¿Crear?`,
+    okLabel: 'Crear en pausa',
+  });
+  if (!ok) return;
+  const btn = $('#adsBoostCreate'); btn.disabled = true; btn.textContent = 'Creando…';
+  try {
+    const res = await window.api.adsCreateBoost({ postId: post.postId, dailyBudget: budget, days, objective });
+    if (!res.ok) { msg.className = 'warn-line'; msg.textContent = res.error; msg.hidden = false; return; }
+    adsBoostSelectedId = null;
+    $('#adsBoostForm').hidden = true;
+    $('#adsBoostPosts').hidden = true;
+    if (res.overview) await renderAdsOverview(res.overview);
+    const done = $('#adsBoostMsg');
+    done.className = 'note';
+    done.textContent = '✅ Campaña creada EN PAUSA. Aparece abajo en «Campañas»: revisala y tocá ▶ Activar cuando quieras que empiece a gastar.';
+    done.hidden = false;
+  } catch (e) {
+    msg.className = 'warn-line'; msg.textContent = 'No se pudo crear: ' + ((e && e.message) || e); msg.hidden = false;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Crear campaña (en pausa)';
+  }
+}
+
+async function renderAdsOverview(pre) {
+  setAdsView('loading');
+  let ov = pre;
+  if (!ov) { try { ov = await window.api.adsOverview(); } catch (_) { ov = null; } }
+  if (!ov || !ov.connected) { setAdsView('setup'); return; }
+  setAdsView('overview');
+
+  const acc = ov.account || {};
+  $('#adsAccountName').textContent = (acc.name ? acc.name + ' · ' : '') + 'Cuenta ' + (acc.id || '');
+  $('#adsSyncAt').textContent = ov.lastSyncAt ? 'Última actualización: ' + formatDate(ov.lastSyncAt) : 'Todavía no se sincronizó';
+  const err = $('#adsError');
+  if (ov.lastError) { err.textContent = '⚠️ ' + ov.lastError; err.hidden = false; } else { err.hidden = true; }
+
+  const cur = acc.currency || 'ARS';
+  const curLabel = $('#adsBoostCur'); if (curLabel) curLabel.textContent = cur;
+  $('#adsTotals').innerHTML = [
+    adsTotalCard('Hoy', ov.today, cur),
+    adsTotalCard('Ayer', ov.yesterday, cur),
+    adsTotalCard('Últimos 7 días', ov.last7, cur),
+    adsTotalCard('Últimos 30 días', ov.last30, cur),
+  ].join('');
+
+  const camps = ov.campaigns || [];
+  adsCurrency = cur;
+  adsCampaignsById = {};
+  for (const c of camps) adsCampaignsById[c.id] = c;
+  $('#adsCampaigns').innerHTML = camps.length
+    ? camps.map((c) => adsCampaignRow(c, cur)).join('')
+    : '<p class="hint">Todavía no hay campañas sincronizadas. Si recién conectaste, esperá unos segundos y tocá 🔄 Actualizar.</p>';
+}
+
+async function renderAdsOverviewForced() {
+  const btn = $('#adsRefreshBtn');
+  const prev = btn.textContent;
+  btn.disabled = true; btn.textContent = '⏳ Actualizando…';
+  try {
+    const ov = await window.api.adsRefresh();
+    await renderAdsOverview(ov);
+  } catch (_) {
+    await renderAdsOverview();
+  } finally {
+    btn.disabled = false; btn.textContent = prev;
+  }
+}
+
+async function adsListAccounts() {
+  const token = $('#adsToken').value.trim();
+  const msg = $('#adsSetupMsg'); msg.hidden = true;
+  if (!token) { msg.textContent = 'Pegá el token primero.'; msg.hidden = false; return; }
+  const btn = $('#adsListBtn'); btn.disabled = true; btn.textContent = 'Buscando…';
+  try {
+    const res = await window.api.adsListAccounts(token);
+    if (!res.ok) { msg.textContent = res.error; msg.hidden = false; return; }
+    const sel = $('#adsAccountSelect');
+    sel.innerHTML = '';
+    for (const a of res.accounts) {
+      const o = document.createElement('option');
+      o.value = a.id;
+      o.textContent = `${a.name} — ${a.id}${a.currency ? ' · ' + a.currency : ''}${a.active ? '' : ' (inactiva)'}`;
+      o.dataset.name = a.name || '';
+      o.dataset.currency = a.currency || '';
+      o.dataset.timezone = a.timezone || '';
+      sel.appendChild(o);
+    }
+    $('#adsAccounts').hidden = false;
+  } catch (e) {
+    msg.textContent = 'No se pudo consultar: ' + ((e && e.message) || e); msg.hidden = false;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Buscar mis cuentas';
+  }
+}
+
+async function adsConnect() {
+  const token = $('#adsToken').value.trim();
+  const sel = $('#adsAccountSelect');
+  const opt = sel.options[sel.selectedIndex];
+  const msg = $('#adsSetupMsg'); msg.hidden = true;
+  if (!opt) { msg.textContent = 'Elegí una cuenta.'; msg.hidden = false; return; }
+  const btn = $('#adsConnectBtn'); btn.disabled = true; btn.textContent = 'Conectando…';
+  try {
+    const res = await window.api.adsConnect({
+      token,
+      adAccountId: opt.value,
+      adAccountName: opt.dataset.name,
+      currency: opt.dataset.currency,
+      timezone: opt.dataset.timezone,
+    });
+    if (!res.ok) { msg.textContent = res.error; msg.hidden = false; return; }
+    $('#adsToken').value = '';
+    $('#adsAccounts').hidden = true;
+    await renderAdsOverview();
+  } catch (e) {
+    msg.textContent = 'No se pudo conectar: ' + ((e && e.message) || e); msg.hidden = false;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Conectar';
+  }
+}
+
+async function adsDisconnect() {
+  try { await window.api.adsDisconnect(); } catch (_) {}
+  setAdsView('setup');
 }
 
 // --------------------------------------------------------------------------

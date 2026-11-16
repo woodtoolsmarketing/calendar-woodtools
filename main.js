@@ -19,6 +19,8 @@ const youtube = require('./integrations/youtube');
 const threads = require('./integrations/threads');
 const tiktok = require('./integrations/tiktok');
 const transcode = require('./integrations/transcode');
+const metaAds = require('./integrations/metaAds');
+const adsStore = require('./adsStore');
 
 const APP_ID = 'com.woodtools.calendario';
 const ICON_PATH = path.join(__dirname, 'assets', 'icon.png');
@@ -1682,6 +1684,302 @@ ipcMain.handle('content:publishNow', async (_e, task) => {
 });
 
 // ----------------------------------------------------------------------------
+// Publicidad (Meta / Instagram Ads) — Fase 1: SOLO lectura de rendimiento
+// Instagram Ads = Meta Ads con ubicación de Instagram: una sola cuenta (act_...).
+// ----------------------------------------------------------------------------
+const ADS_PLATFORM = 'metaAds';
+let adsPolling = false;
+
+function adsCreds() {
+  try { return credentials.getPlatform(ADS_PLATFORM) || {}; } catch (_) { return {}; }
+}
+function adsConnected() {
+  const c = adsCreds();
+  return !!(c && c.token && c.adAccountId);
+}
+function openAdsUI() {
+  showMainWindow();
+  sendToMain('ui:openAds');
+}
+
+function formatMoney(amount, currency) {
+  const n = Number(amount) || 0;
+  try {
+    return new Intl.NumberFormat('es-AR', { style: 'currency', currency: currency || 'ARS', maximumFractionDigits: 2 }).format(n);
+  } catch (_) {
+    return (currency ? currency + ' ' : '$') + n.toFixed(2);
+  }
+}
+
+function withRatios(day) {
+  const t = {
+    spend: Number(day.spend) || 0, impressions: Number(day.impressions) || 0,
+    reach: Number(day.reach) || 0, clicks: Number(day.clicks) || 0, results: day.results || {},
+  };
+  t.ctr = t.impressions ? (t.clicks / t.impressions) * 100 : 0;
+  t.cpc = t.clicks ? t.spend / t.clicks : 0;
+  t.cpm = t.impressions ? (t.spend / t.impressions) * 1000 : 0;
+  return t;
+}
+
+// Suma por campaña de los últimos n días (desde las fotos diarias guardadas)
+function sumCampaignDays(daysObj, campaignId, n, nowDate) {
+  const t = metaAds.emptyTotals();
+  for (const k of metaAds.lastNDayKeys(n, nowDate)) {
+    const day = daysObj && daysObj[k];
+    const pc = day && day.perCampaign && day.perCampaign[campaignId];
+    if (!pc) continue;
+    t.spend += Number(pc.spend) || 0; t.impressions += Number(pc.impressions) || 0;
+    t.reach += Number(pc.reach) || 0; t.clicks += Number(pc.clicks) || 0;
+    const res = pc.results || {};
+    for (const key of Object.keys(t.results)) t.results[key] += Number(res[key]) || 0;
+  }
+  t.ctr = t.impressions ? (t.clicks / t.impressions) * 100 : 0;
+  t.cpc = t.clicks ? t.spend / t.clicks : 0;
+  return t;
+}
+
+// Resumen de la mañana: una vez por día, al primer sondeo, avisa lo de AYER (incluye la noche).
+function maybeMorningAdsSummary(store) {
+  try {
+    const today = metaAds.ymd(new Date());
+    if (store.morningNotifiedDay === today) return;
+    const y = new Date(); y.setDate(y.getDate() - 1);
+    const day = store.days[metaAds.ymd(y)];
+    store.morningNotifiedDay = today; // marca aunque no haya gasto, para no reintentar todo el día
+    if (!day || !(Number(day.spend) > 0)) return;
+    const cur = (store.account && store.account.currency) || adsCreds().currency || 'ARS';
+    const res = metaAds.primaryResult(day.results || {});
+    const line = res.value > 0 ? `${res.value} ${res.label}` : 'sin resultados registrados';
+    showNotification({
+      title: '📊 Resultados de ayer (publicidad)',
+      body: `Gastaste ${formatMoney(day.spend, cur)} · ${line}.\nAbrí Publicidad para ver el detalle por campaña.`,
+      onClick: openAdsUI,
+    });
+  } catch (e) {
+    console.error('[ads] resumen de la mañana falló:', e.message);
+  }
+}
+
+// Sondeo: trae campañas + insights diarios y guarda "fotos" por día. Se auto-repara
+// (reescribe los últimos 7–30 días), así recupera lo de la noche o de días con la PC apagada.
+async function pollAds({ force } = {}) {
+  if (adsPolling || !adsConnected()) return;
+  const c = adsCreds();
+  const store = adsStore.read();
+  const now = Date.now();
+  if (!force && store.lastSyncAt && now - store.lastSyncAt < 25 * 60 * 1000) return;
+  adsPolling = true;
+  try {
+    const nowDate = new Date();
+    const days = metaAds.fetchWindowDays(store.lastSyncAt, now);
+    const { since, until } = metaAds.rangeForDays(days, nowDate);
+    const [campaigns, rows] = await Promise.all([
+      metaAds.getCampaigns(c.token, c.adAccountId),
+      metaAds.getInsights(c.token, c.adAccountId, { since, until, level: 'campaign', timeIncrement: 1 }),
+    ]);
+
+    // Reescribir la foto de cada día presente en la respuesta (datos frescos)
+    const byDay = {};
+    for (const row of rows) {
+      const day = row.date_start;
+      if (!day) continue;
+      (byDay[day] = byDay[day] || []).push(row);
+    }
+    for (const [day, dayRows] of Object.entries(byDay)) {
+      const agg = metaAds.aggregateRows(dayRows);
+      const perCampaign = {};
+      for (const row of dayRows) {
+        const id = String(row.campaign_id || '');
+        if (!id) continue;
+        const t = metaAds.aggregateRows([row]);
+        perCampaign[id] = { name: row.campaign_name || '', spend: t.spend, impressions: t.impressions, reach: t.reach, clicks: t.clicks, results: t.results };
+      }
+      store.days[day] = { spend: agg.spend, impressions: agg.impressions, reach: agg.reach, clicks: agg.clicks, results: agg.results, perCampaign };
+    }
+
+    // Mapa de campañas (nombre, estado, presupuesto)
+    store.campaigns = store.campaigns || {};
+    for (const cam of campaigns) {
+      store.campaigns[cam.id] = {
+        name: cam.name, objective: cam.objective, effectiveStatus: cam.effectiveStatus,
+        running: cam.running, dailyBudget: cam.dailyBudget, lifetimeBudget: cam.lifetimeBudget,
+        startTime: cam.startTime, stopTime: cam.stopTime, lastSeenAt: now,
+      };
+    }
+
+    store.lastSyncAt = now;
+    store.lastError = null;
+    maybeMorningAdsSummary(store);
+    adsStore.write(store);
+    sendToMain('ads:changed');
+  } catch (e) {
+    const ue = metaAds._toUserError(e);
+    store.lastError = ue.message; // un error de red NO pisa la última sync buena
+    adsStore.write(store);
+    sendToMain('ads:changed');
+    console.error('[ads] sondeo falló:', ue.message);
+  } finally {
+    adsPolling = false;
+  }
+}
+
+// Vista para el renderer: lee lo guardado (rápido y sirve aunque no haya internet)
+function buildAdsOverview() {
+  const c = adsCreds();
+  const store = adsStore.read();
+  const nowDate = new Date();
+  const todayKey = metaAds.ymd(nowDate);
+  const yDate = new Date(); yDate.setDate(yDate.getDate() - 1);
+  const yKey = metaAds.ymd(yDate);
+
+  const campaigns = Object.entries(store.campaigns || {}).map(([id, cam]) => ({
+    id,
+    name: cam.name, objective: cam.objective, effectiveStatus: cam.effectiveStatus,
+    running: !!cam.running, dailyBudget: cam.dailyBudget != null ? cam.dailyBudget : null,
+    today: (store.days[todayKey] && store.days[todayKey].perCampaign && store.days[todayKey].perCampaign[id]) || null,
+    last7: sumCampaignDays(store.days, id, 7, nowDate),
+  }));
+  campaigns.sort((a, b) => (b.running ? 1 : 0) - (a.running ? 1 : 0) || (b.last7.spend - a.last7.spend));
+
+  return {
+    connected: !!(c.token && c.adAccountId),
+    account: store.account || (c.adAccountId ? { id: c.adAccountId, name: c.adAccountName || '', currency: c.currency || '' } : null),
+    lastSyncAt: store.lastSyncAt,
+    lastError: store.lastError,
+    today: store.days[todayKey] ? withRatios(store.days[todayKey]) : metaAds.emptyTotals(),
+    yesterday: store.days[yKey] ? withRatios(store.days[yKey]) : metaAds.emptyTotals(),
+    last7: metaAds.sumDays(store.days, 7, nowDate),
+    last30: metaAds.sumDays(store.days, 30, nowDate),
+    campaigns,
+  };
+}
+
+ipcMain.handle('ads:status', () => {
+  const c = adsCreds();
+  const store = adsStore.read();
+  return {
+    connected: !!(c.token && c.adAccountId),
+    account: store.account || (c.adAccountId ? { id: c.adAccountId, name: c.adAccountName || '', currency: c.currency || '' } : null),
+    lastSyncAt: store.lastSyncAt,
+    lastError: store.lastError,
+  };
+});
+
+ipcMain.handle('ads:listAccounts', async (_e, token) => {
+  try {
+    const t = String(token || '').trim();
+    if (!t) return { ok: false, error: 'Pegá el token de anuncios.' };
+    const accounts = await metaAds.listAdAccounts(t);
+    if (!accounts.length) return { ok: false, error: 'Ese token no da acceso a ninguna cuenta publicitaria. Revisá que tenga el permiso ads_read y que esté asignado a tu cuenta.' };
+    return { ok: true, accounts };
+  } catch (e) {
+    return { ok: false, error: metaAds._toUserError(e).message };
+  }
+});
+
+ipcMain.handle('ads:connect', async (_e, payload) => {
+  try {
+    const p = payload || {};
+    const t = String(p.token || '').trim();
+    if (!t) return { ok: false, error: 'Falta el token.' };
+    if (!p.adAccountId) return { ok: false, error: 'Elegí una cuenta publicitaria.' };
+    await metaAds.getCampaigns(t, p.adAccountId); // valida permiso + cuenta
+    credentials.setPlatform(ADS_PLATFORM, {
+      token: t, adAccountId: String(p.adAccountId), adAccountName: p.adAccountName || '',
+      currency: p.currency || '', timezone: p.timezone || '',
+    });
+    const store = adsStore.read();
+    store.account = { id: String(p.adAccountId), name: p.adAccountName || '', currency: p.currency || '', timezone: p.timezone || '' };
+    store.lastError = null;
+    adsStore.write(store);
+    pollAds({ force: true }).catch(() => {});
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: metaAds._toUserError(e).message };
+  }
+});
+
+ipcMain.handle('ads:disconnect', () => {
+  try { credentials.clearPlatform(ADS_PLATFORM); } catch (_) {}
+  return true;
+});
+
+ipcMain.handle('ads:getOverview', async () => {
+  try { await pollAds(); } catch (_) {}
+  return buildAdsOverview();
+});
+
+ipcMain.handle('ads:refresh', async () => {
+  await pollAds({ force: true });
+  return buildAdsOverview();
+});
+
+// Fase 2: activar / pausar una campaña (requiere ads_management). Gasta/!gasta plata real:
+// el renderer confirma con el usuario ANTES de llamar acá.
+ipcMain.handle('ads:setStatus', async (_e, payload) => {
+  try {
+    const p = payload || {};
+    const id = String(p.campaignId || '');
+    const status = String(p.status || '').toUpperCase();
+    if (!adsConnected()) return { ok: false, error: 'Conectá Publicidad primero.' };
+    if (!id) return { ok: false, error: 'Falta la campaña.' };
+    if (status !== 'ACTIVE' && status !== 'PAUSED') return { ok: false, error: 'Estado inválido.' };
+    const c = adsCreds();
+    await metaAds.setEntityStatus(c.token, id, status);
+    await pollAds({ force: true }); // refresca estado y métricas
+    return { ok: true, overview: buildAdsOverview() };
+  } catch (e) {
+    return { ok: false, error: metaAds._toUserError(e).message };
+  }
+});
+
+// Fase 3: lista las publicaciones de la Página para elegir cuál promocionar
+ipcMain.handle('ads:listPosts', async () => {
+  try {
+    const m = credentials.getPlatform('meta') || {};
+    if (!m.pageId || !m.pageToken) return { ok: false, error: 'Primero conectá Facebook (hace falta la Página para elegir la publicación).' };
+    const posts = await metaAds.getPagePosts(m.pageToken, m.pageId, 25);
+    return { ok: true, posts };
+  } catch (e) {
+    return { ok: false, error: metaAds._toUserError(e).message };
+  }
+});
+
+// Fase 3: crea una campaña EN PAUSA que promociona una publicación existente.
+// Se crea pausada: NO gasta hasta que el usuario la active (Fase 2). El renderer confirma antes.
+ipcMain.handle('ads:createBoost', async (_e, payload) => {
+  try {
+    if (!adsConnected()) return { ok: false, error: 'Conectá Publicidad primero.' };
+    const p = payload || {};
+    if (!p.postId) return { ok: false, error: 'Elegí una publicación.' };
+    const budget = Number(p.dailyBudget);
+    if (!(budget > 0)) return { ok: false, error: 'Poné un presupuesto diario válido.' };
+    const days = Math.max(1, Math.min(90, parseInt(p.days, 10) || 7));
+    const m = credentials.getPlatform('meta') || {};
+    if (!m.pageId) return { ok: false, error: 'Falta la Página. Conectá Facebook primero.' };
+    const c = adsCreds();
+    const startMs = Date.now() + 5 * 60 * 1000;
+    const endMs = startMs + days * 24 * 60 * 60 * 1000;
+    const ids = await metaAds.createBoost(c.token, c.adAccountId, {
+      pageId: String(m.pageId),
+      postId: String(p.postId),
+      objective: p.objective || 'OUTCOME_ENGAGEMENT',
+      dailyBudget: budget,
+      days,
+      countries: Array.isArray(p.countries) ? p.countries : ['AR'],
+      name: p.name || null,
+      startMs,
+      endMs,
+    });
+    await pollAds({ force: true });
+    return { ok: true, ids, overview: buildAdsOverview() };
+  } catch (e) {
+    return { ok: false, error: metaAds._toUserError(e).message };
+  }
+});
+
+// ----------------------------------------------------------------------------
 // Ciclo de vida
 // ----------------------------------------------------------------------------
 app.whenReady().then(() => {
@@ -1711,6 +2009,15 @@ app.whenReady().then(() => {
   // Primer chequeo al ratito y luego cada 30s
   setTimeout(checkDue, 4000);
   setInterval(checkDue, 30 * 1000);
+
+  // Publicidad (Meta/Instagram Ads): primer sondeo a los 12 s y luego cada 3 h.
+  // Recupera lo de la noche o de días con la PC apagada al traer la ventana de días desde Meta.
+  setTimeout(() => { pollAds().catch(() => {}); }, 12 * 1000);
+  setInterval(() => { pollAds().catch(() => {}); }, 3 * 60 * 60 * 1000);
+  try {
+    const { powerMonitor } = require('electron');
+    powerMonitor.on('resume', () => { setTimeout(() => pollAds().catch(() => {}), 20 * 1000); });
+  } catch (_) {}
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();

@@ -25,6 +25,9 @@
         <span>⚙ Conexiones (redes)</span>
         <span id="connAlertDot" class="conn-dot" hidden></span>
       </button>
+      <button id="btnAds" class="btn-ghost">
+        <span>📊 Publicidad (Meta Ads)</span>
+      </button>
 
       <div class="legend">
         <div class="legend-title">Importancia</div>
@@ -375,6 +378,111 @@
         <button id="btnPublishNow" class="btn-ghost" hidden>📤 Publicar ahora</button>
         <button id="btnDone" class="btn-ok" hidden>✓ Marcar hecha</button>
         <button id="btnSave" class="btn-primary">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== MODAL PUBLICIDAD ===================== -->
+  <div id="adsModal" class="modal-backdrop" hidden>
+    <div class="modal modal-wide">
+      <div class="modal-head">
+        <h2>📊 Publicidad — Rendimiento de campañas</h2>
+        <button id="adsClose" class="icon-btn" title="Cerrar">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="adsLoading" class="hint">Cargando…</div>
+
+        <!-- No conectado: conexión de la cuenta de anuncios -->
+        <div id="adsSetup" hidden>
+          <div class="setup-hint">
+            <p><strong>Conectá tu cuenta de anuncios (solo lectura).</strong> Necesitás un <strong>token de «Usuario del sistema»</strong> del Business Manager con el permiso <code>ads_read</code>:</p>
+            <ol>
+              <li>Entrá a <a href="#" data-open="https://business.facebook.com/settings/system-users">Configuración del negocio → Usuarios → Usuarios del sistema</a>.</li>
+              <li>Creá (o usá) un usuario del sistema, tocá <strong>Asignar activos</strong> y agregale tu <strong>cuenta publicitaria</strong> con acceso total.</li>
+              <li>Tocá <strong>Generar token nuevo</strong>, elegí tu app y marcá los permisos <strong><code>ads_read</code></strong> (ver) y <strong><code>ads_management</code></strong> (activar, pausar y crear).</li>
+              <li>Copiá el token y pegalo acá abajo. (No lo compartas con nadie.)</li>
+            </ol>
+          </div>
+          <div class="field">
+            <label>Token de anuncios (ads_read)</label>
+            <input type="password" id="adsToken" autocomplete="off" spellcheck="false" placeholder="Pegá acá el token del usuario del sistema" />
+          </div>
+          <button type="button" id="adsListBtn" class="btn-primary">Buscar mis cuentas</button>
+          <div id="adsAccounts" class="section-gap" hidden>
+            <div class="field">
+              <label>Elegí la cuenta publicitaria</label>
+              <select id="adsAccountSelect"></select>
+            </div>
+            <button type="button" id="adsConnectBtn" class="btn-primary">Conectar</button>
+          </div>
+          <div id="adsSetupMsg" class="warn-line" hidden></div>
+        </div>
+
+        <!-- Conectado: resumen de rendimiento -->
+        <div id="adsOverview" hidden>
+          <div class="status-head">
+            <div>
+              <div class="section-title" id="adsAccountName">Cuenta</div>
+              <small id="adsSyncAt" class="hint">—</small>
+            </div>
+            <div class="ads-actions">
+              <button type="button" id="adsRefreshBtn" class="btn-ghost">🔄 Actualizar</button>
+              <button type="button" id="adsDisconnectBtn" class="btn-ghost">Desconectar</button>
+            </div>
+          </div>
+          <div id="adsError" class="warn-line" hidden></div>
+          <div id="adsTotals" class="ads-totals"></div>
+          <div class="section-title section-gap">Campañas</div>
+          <div id="adsCampaigns" class="ads-campaigns"></div>
+          <p class="hint section-gap">Activar o pausar pide confirmación (gasta/deja de gastar plata real).</p>
+
+          <div class="section-title section-gap">Promocionar una publicación</div>
+          <div id="adsBoostBox" class="ads-boost">
+            <div class="ads-boost-summary">Elegí una publicación de tu Página, poné presupuesto y duración. Se crea una campaña <strong>EN PAUSA</strong>: no gasta nada hasta que la actives desde «Campañas».</div>
+            <button type="button" id="adsBoostLoad" class="btn-small">Elegir una publicación…</button>
+            <div id="adsBoostPosts" class="ads-post-list" hidden></div>
+            <div id="adsBoostForm" hidden>
+              <div class="field-row">
+                <div class="field">
+                  <label>Presupuesto diario (<span id="adsBoostCur">ARS</span>)</label>
+                  <input type="number" id="adsBoostBudget" min="1" step="1" value="500" />
+                </div>
+                <div class="field">
+                  <label>Duración (días)</label>
+                  <input type="number" id="adsBoostDays" min="1" max="90" value="7" />
+                </div>
+                <div class="field">
+                  <label>Objetivo</label>
+                  <select id="adsBoostObjective">
+                    <option value="OUTCOME_ENGAGEMENT">Interacción</option>
+                    <option value="OUTCOME_TRAFFIC">Tráfico (clics)</option>
+                    <option value="OUTCOME_AWARENESS">Reconocimiento (alcance)</option>
+                  </select>
+                </div>
+              </div>
+              <button type="button" id="adsBoostCreate" class="btn-primary">Crear campaña (en pausa)</button>
+            </div>
+            <div id="adsBoostMsg" class="warn-line" hidden></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== CONFIRMACIÓN / AVISO PUBLICIDAD ============== -->
+  <div id="adsConfirmModal" class="modal-backdrop" hidden>
+    <div class="modal modal-small">
+      <div class="modal-head">
+        <h2 id="adsConfirmTitle">Confirmar</h2>
+        <button id="adsConfirmX" class="icon-btn" title="Cerrar">✕</button>
+      </div>
+      <div class="modal-body">
+        <p id="adsConfirmMsg" class="confirm-msg"></p>
+      </div>
+      <div class="modal-foot">
+        <div class="spacer"></div>
+        <button type="button" id="adsConfirmCancel" class="btn-ghost">Cancelar</button>
+        <button type="button" id="adsConfirmOk" class="btn-primary">Confirmar</button>
       </div>
     </div>
   </div>

@@ -33,6 +33,19 @@ contextBridge.exposeInMainWorld('api', {
   // TikTok: datos del creador (obligatorios antes de publicar)
   tiktokCreatorInfo: () => ipcRenderer.invoke('tiktok:creatorInfo'),
 
+  // Publicidad (Meta/Instagram Ads) — Fase 1: lectura de rendimiento
+  adsStatus: () => ipcRenderer.invoke('ads:status'),
+  adsListAccounts: (token) => ipcRenderer.invoke('ads:listAccounts', token),
+  adsConnect: (payload) => ipcRenderer.invoke('ads:connect', payload),
+  adsDisconnect: () => ipcRenderer.invoke('ads:disconnect'),
+  adsOverview: () => ipcRenderer.invoke('ads:getOverview'),
+  adsRefresh: () => ipcRenderer.invoke('ads:refresh'),
+  adsSetStatus: (payload) => ipcRenderer.invoke('ads:setStatus', payload),
+  adsListPosts: () => ipcRenderer.invoke('ads:listPosts'),
+  adsCreateBoost: (payload) => ipcRenderer.invoke('ads:createBoost', payload),
+  onAdsChanged: (cb) => ipcRenderer.on('ads:changed', () => cb()),
+  onOpenAds: (cb) => ipcRenderer.on('ui:openAds', () => cb()),
+
   // App
   openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
   getAppInfo: () => ipcRenderer.invoke('app:info'),
