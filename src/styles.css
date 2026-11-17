@@ -420,6 +420,23 @@ input[type="checkbox"] { accent-color: var(--accent); }
 .ads-badge.off { background: rgba(255,255,255,.08); color: var(--text-dim); }
 .ads-camp-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .ads-act { white-space: nowrap; }
+
+/* Filtro por plataforma (Facebook / Instagram) */
+.ads-filter { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ads-filter-label { font-size: 12px; color: var(--text-dim); }
+.ads-filter-btn {
+  background: var(--bg-3); border: 1px solid var(--line); color: var(--text-dim);
+  padding: 5px 12px; border-radius: 999px; cursor: pointer; font-size: 13px; font-weight: 600;
+}
+.ads-filter-btn:hover { filter: brightness(1.12); }
+.ads-filter-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* Desglose por plataforma dentro de cada campaña */
+.ads-camp-platforms {
+  display: flex; flex-direction: column; gap: 2px;
+  margin-top: 4px; padding-top: 6px; border-top: 1px dashed var(--line);
+  font-size: 12.5px; color: var(--text-dim);
+}
 .confirm-msg { font-size: 14px; line-height: 1.55; white-space: pre-wrap; margin: 0; }
 
 /* Promocionar una publicación (Fase 3) */

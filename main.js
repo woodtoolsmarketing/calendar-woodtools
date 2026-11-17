@@ -1772,45 +1772,92 @@ async function pollAds({ force } = {}) {
   adsPolling = true;
   try {
     const nowDate = new Date();
-    const days = metaAds.fetchWindowDays(store.lastSyncAt, now);
-    const { since, until } = metaAds.rangeForDays(days, nowDate);
-    const [campaigns, rows] = await Promise.all([
-      metaAds.getCampaigns(c.token, c.adAccountId),
-      metaAds.getInsights(c.token, c.adAccountId, { since, until, level: 'campaign', timeIncrement: 1 }),
-    ]);
+    // Siempre 30 días: al agregar una cuenta nueva (ej. Instagram) entra todo su mes de una.
+    const { since, until } = metaAds.rangeForDays(30, nowDate);
 
-    // Reescribir la foto de cada día presente en la respuesta (datos frescos)
-    const byDay = {};
-    for (const row of rows) {
-      const day = row.date_start;
-      if (!day) continue;
-      (byDay[day] = byDay[day] || []).push(row);
+    // TODAS las cuentas publicitarias que ve el token (Meta Ads + la de Instagram, etc.)
+    let accounts = [];
+    try { accounts = await metaAds.listAdAccounts(c.token); } catch (_) {}
+    if (!accounts.length && c.adAccountId) {
+      accounts = [{ id: String(c.adAccountId), name: c.adAccountName || '', currency: c.currency || '', timezone: c.timezone || '' }];
     }
-    for (const [day, dayRows] of Object.entries(byDay)) {
-      const agg = metaAds.aggregateRows(dayRows);
-      const perCampaign = {};
-      for (const row of dayRows) {
+    store.accounts = accounts.map((a) => ({ id: a.id, name: a.name, currency: a.currency, active: a.active }));
+
+    // Foto diaria de la ventana, SUMANDO todas las cuentas en el mismo bucket por día.
+    const windowDays = {};
+    const campaignsMap = {};
+    let anyOk = false;
+    for (const acc of accounts) {
+      let camps = [];
+      let rows = [];
+      try {
+        [camps, rows] = await Promise.all([
+          metaAds.getCampaigns(c.token, acc.id),
+          metaAds.getInsights(c.token, acc.id, { since, until, level: 'campaign', timeIncrement: 1 }),
+        ]);
+        anyOk = true;
+      } catch (e) {
+        console.error('[ads] cuenta ' + acc.id + ' falló:', metaAds._toUserError(e).message);
+        continue; // una cuenta con problema no voltea a las demás
+      }
+      for (const cam of camps) {
+        campaignsMap[cam.id] = {
+          name: cam.name, objective: cam.objective, effectiveStatus: cam.effectiveStatus,
+          running: cam.running, dailyBudget: cam.dailyBudget, lifetimeBudget: cam.lifetimeBudget,
+          startTime: cam.startTime, stopTime: cam.stopTime,
+          accountId: acc.id, accountName: acc.name, currency: acc.currency, lastSeenAt: now,
+        };
+      }
+      for (const row of rows) {
+        const day = row.date_start;
+        if (!day) continue;
         const id = String(row.campaign_id || '');
         if (!id) continue;
         const t = metaAds.aggregateRows([row]);
-        perCampaign[id] = { name: row.campaign_name || '', spend: t.spend, impressions: t.impressions, reach: t.reach, clicks: t.clicks, results: t.results };
+        const bucket = windowDays[day] || (windowDays[day] = { spend: 0, impressions: 0, reach: 0, clicks: 0, results: metaAds.emptyTotals().results, perCampaign: {}, platforms: {}, byAccount: {} });
+        bucket.spend += t.spend; bucket.impressions += t.impressions; bucket.reach += t.reach; bucket.clicks += t.clicks;
+        for (const k of Object.keys(bucket.results)) bucket.results[k] += t.results[k] || 0;
+        bucket.perCampaign[id] = { name: row.campaign_name || '', spend: t.spend, impressions: t.impressions, reach: t.reach, clicks: t.clicks, results: t.results };
+        // Totales por cuenta (para el selector de cuenta)
+        const ab = bucket.byAccount[acc.id] || (bucket.byAccount[acc.id] = { spend: 0, impressions: 0, reach: 0, clicks: 0, results: metaAds.emptyTotals().results, platforms: {} });
+        ab.spend += t.spend; ab.impressions += t.impressions; ab.reach += t.reach; ab.clicks += t.clicks;
+        for (const k of Object.keys(ab.results)) ab.results[k] += t.results[k] || 0;
       }
-      store.days[day] = { spend: agg.spend, impressions: agg.impressions, reach: agg.reach, clicks: agg.clicks, results: agg.results, perCampaign };
+      // Desglose por plataforma de esta cuenta (best-effort)
+      try {
+        const platRows = await metaAds.getInsightsByPlatform(c.token, acc.id, { since, until, timeIncrement: 1 });
+        for (const row of platRows) {
+          const day = row.date_start;
+          if (!day) continue;
+          const id = String(row.campaign_id || '');
+          if (!id) continue;
+          const plat = metaAds.normalizePlatform(row.publisher_platform);
+          const m = { spend: Number(row.spend) || 0, impressions: Number(row.impressions) || 0, clicks: Number(row.clicks) || 0, reach: Number(row.reach) || 0, results: metaAds.pickResults(row.actions) };
+          const bucket = windowDays[day];
+          if (!bucket) continue;
+          const pc = bucket.perCampaign[id] || (bucket.perCampaign[id] = { name: row.campaign_name || '', spend: 0, impressions: 0, reach: 0, clicks: 0, results: {} });
+          if (!pc.platforms) pc.platforms = {};
+          pc.platforms[plat] = m;
+          if (!bucket.platforms[plat]) bucket.platforms[plat] = metaAds.emptyPlatMetric();
+          metaAds.addPlatMetric(bucket.platforms[plat], m);
+          const ab = bucket.byAccount[acc.id] || (bucket.byAccount[acc.id] = { spend: 0, impressions: 0, reach: 0, clicks: 0, results: metaAds.emptyTotals().results, platforms: {} });
+          if (!ab.platforms[plat]) ab.platforms[plat] = metaAds.emptyPlatMetric();
+          metaAds.addPlatMetric(ab.platforms[plat], m);
+        }
+      } catch (e) {
+        console.error('[ads] desglose por plataforma falló (cuenta ' + acc.id + '):', metaAds._toUserError(e).message);
+      }
     }
 
-    // Mapa de campañas (nombre, estado, presupuesto)
-    store.campaigns = store.campaigns || {};
-    for (const cam of campaigns) {
-      store.campaigns[cam.id] = {
-        name: cam.name, objective: cam.objective, effectiveStatus: cam.effectiveStatus,
-        running: cam.running, dailyBudget: cam.dailyBudget, lifetimeBudget: cam.lifetimeBudget,
-        startTime: cam.startTime, stopTime: cam.stopTime, lastSeenAt: now,
-      };
+    if (anyOk) {
+      for (const [day, bucket] of Object.entries(windowDays)) store.days[day] = bucket;
+      store.campaigns = campaignsMap;
+      store.lastSyncAt = now;
+      store.lastError = null;
+      maybeMorningAdsSummary(store);
+    } else {
+      store.lastError = 'No se pudieron leer las cuentas publicitarias (revisá la conexión o el token).';
     }
-
-    store.lastSyncAt = now;
-    store.lastError = null;
-    maybeMorningAdsSummary(store);
     adsStore.write(store);
     sendToMain('ads:changed');
   } catch (e) {
@@ -1833,24 +1880,65 @@ function buildAdsOverview() {
   const yDate = new Date(); yDate.setDate(yDate.getDate() - 1);
   const yKey = metaAds.ymd(yDate);
 
-  const campaigns = Object.entries(store.campaigns || {}).map(([id, cam]) => ({
+  const accounts = (store.accounts && store.accounts.length) ? store.accounts
+    : (c.adAccountId ? [{ id: c.adAccountId, name: c.adAccountName || '', currency: c.currency || '' }] : []);
+  const currencies = [...new Set(accounts.map((a) => a.currency).filter(Boolean))];
+  const currency = currencies[0] || c.currency || 'ARS';
+  const mixedCurrency = currencies.length > 1;
+
+  let campaigns = Object.entries(store.campaigns || {}).map(([id, cam]) => ({
     id,
     name: cam.name, objective: cam.objective, effectiveStatus: cam.effectiveStatus,
     running: !!cam.running, dailyBudget: cam.dailyBudget != null ? cam.dailyBudget : null,
+    accountId: cam.accountId || '', accountName: cam.accountName || '', accountCurrency: cam.currency || currency,
     today: (store.days[todayKey] && store.days[todayKey].perCampaign && store.days[todayKey].perCampaign[id]) || null,
     last7: sumCampaignDays(store.days, id, 7, nowDate),
+    last30: sumCampaignDays(store.days, id, 30, nowDate),
+    todayByPlatform: metaAds.sumPlatformForKeys(store.days, [todayKey], id),
+    last7ByPlatform: metaAds.sumPlatformForKeys(store.days, metaAds.lastNDayKeys(7, nowDate), id),
   }));
+  // Sacar las campañas FINALIZADAS que no gastan: solo quedan las que corren o gastaron en 30 días
+  campaigns = campaigns.filter((cm) => cm.running || (cm.last30 && cm.last30.spend > 0));
   campaigns.sort((a, b) => (b.running ? 1 : 0) - (a.running ? 1 : 0) || (b.last7.spend - a.last7.spend));
+
+  // Totales por cuenta (para el selector de cuenta): misma forma que los totales de arriba
+  const k7 = metaAds.lastNDayKeys(7, nowDate);
+  const k30 = metaAds.lastNDayKeys(30, nowDate);
+  const byAccount = {};
+  for (const a of accounts) {
+    byAccount[a.id] = {
+      today: metaAds.sumAccountForKeys(store.days, a.id, [todayKey]),
+      yesterday: metaAds.sumAccountForKeys(store.days, a.id, [yKey]),
+      last7: metaAds.sumAccountForKeys(store.days, a.id, k7),
+      last30: metaAds.sumAccountForKeys(store.days, a.id, k30),
+      byPlatform: {
+        today: metaAds.sumAccountPlatformForKeys(store.days, a.id, [todayKey]),
+        yesterday: metaAds.sumAccountPlatformForKeys(store.days, a.id, [yKey]),
+        last7: metaAds.sumAccountPlatformForKeys(store.days, a.id, k7),
+        last30: metaAds.sumAccountPlatformForKeys(store.days, a.id, k30),
+      },
+    };
+  }
 
   return {
     connected: !!(c.token && c.adAccountId),
-    account: store.account || (c.adAccountId ? { id: c.adAccountId, name: c.adAccountName || '', currency: c.currency || '' } : null),
+    account: accounts[0] || store.account || (c.adAccountId ? { id: c.adAccountId, name: c.adAccountName || '', currency: c.currency || '' } : null),
+    accounts,
+    byAccount,
+    mixedCurrency,
+    currency,
     lastSyncAt: store.lastSyncAt,
     lastError: store.lastError,
     today: store.days[todayKey] ? withRatios(store.days[todayKey]) : metaAds.emptyTotals(),
     yesterday: store.days[yKey] ? withRatios(store.days[yKey]) : metaAds.emptyTotals(),
     last7: metaAds.sumDays(store.days, 7, nowDate),
     last30: metaAds.sumDays(store.days, 30, nowDate),
+    byPlatform: {
+      today: metaAds.sumPlatformForKeys(store.days, [todayKey]),
+      yesterday: metaAds.sumPlatformForKeys(store.days, [yKey]),
+      last7: metaAds.sumPlatformForKeys(store.days, metaAds.lastNDayKeys(7, nowDate)),
+      last30: metaAds.sumPlatformForKeys(store.days, metaAds.lastNDayKeys(30, nowDate)),
+    },
     campaigns,
   };
 }
@@ -1980,6 +2068,69 @@ ipcMain.handle('ads:createBoost', async (_e, payload) => {
 });
 
 // ----------------------------------------------------------------------------
+// Actualizaciones automáticas (electron-updater + GitHub Releases, repo público)
+// En una PC nueva se instala UNA vez a mano; de ahí en más se actualiza sola.
+// ----------------------------------------------------------------------------
+function setupAutoUpdate() {
+  if (!app.isPackaged) return; // en desarrollo (npm start) no hay actualizaciones
+  let autoUpdater;
+  try {
+    autoUpdater = require('electron-updater').autoUpdater;
+  } catch (e) {
+    console.error('[update] electron-updater no disponible:', e && e.message);
+    return;
+  }
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('error', (e) => console.error('[update] error:', e && e.message));
+
+  // Mientras baja: aviso para que se sepa que está en marcha (la descarga es silenciosa)
+  autoUpdater.on('update-available', (info) => {
+    const v = info && info.version ? info.version : '';
+    showNotification({
+      title: '⬇️ Descargando actualización',
+      body: 'Bajando la versión ' + v + ' de Calendario WoodTools. Te aviso cuando esté lista para instalar.',
+      onClick: showMainWindow,
+    });
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    const version = info && info.version ? info.version : '';
+    // 1) Notificación de Windows: se ve aunque la app esté minimizada en la bandeja
+    showNotification({
+      title: '✅ Actualización lista — reiniciá para instalar',
+      body: 'Ya se descargó la versión ' + version + '. Abrí Calendario WoodTools y tocá «Reiniciar ahora».',
+      onClick: showMainWindow,
+    });
+    // 2) Traer la ventana al frente y mostrar el cartel pegado a ella (imposible de no ver)
+    try {
+      showMainWindow();
+      const win = (mainWindow && !mainWindow.isDestroyed()) ? mainWindow : null;
+      if (win) { try { win.flashFrame(true); } catch (_) {} }
+      const opts = {
+        type: 'info',
+        title: 'Actualización lista',
+        message: 'Hay una versión nueva de Calendario WoodTools' + (version ? ' (' + version + ')' : '') + '.',
+        detail: 'Se instala al reiniciar el programa. Si elegís «Después», se instala sola la próxima vez que lo cierres.',
+        buttons: ['Reiniciar ahora', 'Después'],
+        defaultId: 0,
+        cancelId: 1,
+      };
+      const prom = win ? dialog.showMessageBox(win, opts) : dialog.showMessageBox(opts);
+      prom.then(({ response }) => {
+        try { if (win) win.flashFrame(false); } catch (_) {}
+        if (response === 0) { isQuitting = true; autoUpdater.quitAndInstall(); }
+      }).catch((e) => console.error('[update]', e && e.message));
+    } catch (_) {}
+  });
+
+  // Una revisión al arrancar y otra cada 6 h (la app suele quedar abierta en la bandeja)
+  autoUpdater.checkForUpdates().catch((e) => console.error('[update]', e && e.message));
+  setInterval(() => { autoUpdater.checkForUpdates().catch(() => {}); }, 6 * 60 * 60 * 1000);
+}
+
+// ----------------------------------------------------------------------------
 // Ciclo de vida
 // ----------------------------------------------------------------------------
 app.whenReady().then(() => {
@@ -2018,6 +2169,9 @@ app.whenReady().then(() => {
     const { powerMonitor } = require('electron');
     powerMonitor.on('resume', () => { setTimeout(() => pollAds().catch(() => {}), 20 * 1000); });
   } catch (_) {}
+
+  // Actualizaciones automáticas (solo en la app instalada)
+  setupAutoUpdate();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();

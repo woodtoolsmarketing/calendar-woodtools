@@ -2186,6 +2186,20 @@ function wire() {
   $('#adsBoostLoad').onclick = () => loadBoostPosts();
   $('#adsBoostPosts').addEventListener('click', onBoostPostClick);
   $('#adsBoostCreate').onclick = () => createBoostNow();
+  $$('#adsPlatformFilter .ads-filter-btn').forEach((b) => {
+    b.onclick = () => {
+      adsPlatformFilter = b.dataset.plat || 'all';
+      $$('#adsPlatformFilter .ads-filter-btn').forEach((x) => x.classList.toggle('active', x === b));
+      applyAdsFilter();
+    };
+  });
+  // Selector de cuenta (botones dinámicos → delegación)
+  $('#adsAccountFilter').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-acc]');
+    if (!b) return;
+    adsAccountFilter = b.dataset.acc || 'all';
+    applyAdsFilter();
+  });
   if (typeof window.api.onOpenAds === 'function') window.api.onOpenAds(() => openAds());
   if (typeof window.api.onAdsChanged === 'function') window.api.onAdsChanged(() => { if (!$('#adsModal').hidden && !$('#adsOverview').hidden) renderAdsOverview(); });
 
@@ -2263,6 +2277,19 @@ function adsShowError(msg) {
   err.hidden = false;
 }
 
+let adsPlatformFilter = 'all';
+let adsLastOverview = null;
+let adsMultiAccount = false;
+let adsAccountFilter = 'all';
+const ADS_PLAT_DISPLAY = [
+  { key: 'facebook', label: 'Facebook', emoji: '📘' },
+  { key: 'instagram', label: 'Instagram', emoji: '📷' },
+  { key: 'messenger', label: 'Messenger', emoji: '💬' },
+  { key: 'audience_network', label: 'Audience Network', emoji: '🌐' },
+  { key: 'other', label: 'Otros', emoji: '•' },
+];
+function adsPlatMetric(map, key) { return (map && map[key]) || { spend: 0, impressions: 0, clicks: 0, results: {} }; }
+
 function setAdsView(which) {
   $('#adsSetup').hidden = which !== 'setup';
   $('#adsOverview').hidden = which !== 'overview';
@@ -2302,11 +2329,14 @@ function adsObjectiveLabel(o) {
 
 function adsTotalCard(label, t, cur) {
   t = t || {};
-  const ctr = t.ctr ? ' · CTR ' + Number(t.ctr).toFixed(1) + '%' : '';
+  const impressions = Number(t.impressions) || 0;
+  const clicks = Number(t.clicks) || 0;
+  const ctrVal = impressions ? (clicks / impressions) * 100 : 0;
+  const ctr = ctrVal ? ' · CTR ' + ctrVal.toFixed(1) + '%' : '';
   return `<div class="ads-card">
     <div class="ads-card-label">${label}</div>
     <div class="ads-card-spend">${adsMoney(t.spend, cur)}</div>
-    <div class="ads-card-sub">${adsInt(t.impressions)} impres. · ${adsInt(t.clicks)} clics${ctr}</div>
+    <div class="ads-card-sub">${adsInt(impressions)} impres. · ${adsInt(clicks)} clics${ctr}</div>
     <div class="ads-card-sub">${adsResultsText(t.results)}</div>
   </div>`;
 }
@@ -2319,24 +2349,39 @@ function adsCampaignActionBtn(c) {
   return '';
 }
 
-function adsCampaignRow(c, cur) {
-  const t7 = c.last7 || {};
-  const today = c.today || null;
+function adsCampaignRow(c, cur, filter) {
+  filter = filter || 'all';
+  const ccur = c.accountCurrency || cur; // cada campaña se muestra en la moneda de su cuenta
+  const t7 = filter === 'all' ? (c.last7 || {}) : adsPlatMetric(c.last7ByPlatform, filter);
+  const today = filter === 'all' ? (c.today || null) : adsPlatMetric(c.todayByPlatform, filter);
   const badge = c.running
     ? '<span class="ads-badge on">● Activa</span>'
     : '<span class="ads-badge off">⏸ ' + escapeHtml(adsStatusLabel(c.effectiveStatus)) + '</span>';
-  const budget = c.dailyBudget ? ' · Presup. diario ' + adsMoney(c.dailyBudget, cur) : '';
-  const todayLine = today ? 'Hoy: ' + adsMoney(today.spend, cur) + ' · ' + adsResultsText(today.results) : 'Hoy: sin gasto';
+  const budget = c.dailyBudget ? ' · Presup. diario ' + adsMoney(c.dailyBudget, ccur) : '';
+  const accTag = (adsMultiAccount && adsAccountFilter === 'all' && c.accountName) ? ' · 🏢 ' + escapeHtml(c.accountName) : '';
+  const todayLine = (today && Number(today.spend) > 0)
+    ? 'Hoy: ' + adsMoney(today.spend, ccur) + ' · ' + adsResultsText(today.results)
+    : 'Hoy: sin gasto';
+  // Desglose Facebook/Instagram (solo en la vista "Todas"), de los últimos 7 días
+  let desglose = '';
+  if (filter === 'all') {
+    const plats = c.last7ByPlatform || {};
+    const lines = ADS_PLAT_DISPLAY
+      .filter((p) => plats[p.key] && (Number(plats[p.key].spend) > 0 || Number(plats[p.key].impressions) > 0))
+      .map((p) => `<span>${p.emoji} ${p.label}: ${adsMoney(plats[p.key].spend, ccur)} · ${adsInt(plats[p.key].impressions)} impres. · ${adsResultsText(plats[p.key].results)}</span>`);
+    if (lines.length) desglose = `<div class="ads-camp-platforms">${lines.join('')}</div>`;
+  }
   return `<div class="ads-camp${c.running ? ' on' : ''}">
     <div class="ads-camp-head">
       <span class="ads-camp-name">${escapeHtml(c.name || '(sin nombre)')}</span>
       <span class="ads-camp-right">${badge}${adsCampaignActionBtn(c)}</span>
     </div>
-    <div class="ads-camp-meta">${escapeHtml(adsObjectiveLabel(c.objective))}${budget}</div>
+    <div class="ads-camp-meta">${escapeHtml(adsObjectiveLabel(c.objective))}${budget}${accTag}</div>
     <div class="ads-camp-metrics">
       <span>${todayLine}</span>
-      <span>7 días: ${adsMoney(t7.spend, cur)} · ${adsInt(t7.impressions)} impres. · ${adsResultsText(t7.results)}</span>
+      <span>7 días: ${adsMoney(t7.spend, ccur)} · ${adsInt(t7.impressions)} impres. · ${adsResultsText(t7.results)}</span>
     </div>
+    ${desglose}
   </div>`;
 }
 
@@ -2456,30 +2501,81 @@ async function renderAdsOverview(pre) {
   let ov = pre;
   if (!ov) { try { ov = await window.api.adsOverview(); } catch (_) { ov = null; } }
   if (!ov || !ov.connected) { setAdsView('setup'); return; }
-  setAdsView('overview');
+  adsLastOverview = ov;
+  renderAdsFromOverview(ov);
+}
 
+// Re-dibuja desde el último overview cacheado (lo usa el filtro, sin volver a pedir datos)
+function applyAdsFilter() {
+  if (adsLastOverview) renderAdsFromOverview(adsLastOverview);
+}
+
+function renderAdsFromOverview(ov) {
+  setAdsView('overview');
   const acc = ov.account || {};
-  $('#adsAccountName').textContent = (acc.name ? acc.name + ' · ' : '') + 'Cuenta ' + (acc.id || '');
+  const accounts = ov.accounts || [];
+  adsMultiAccount = accounts.length > 1;
+  // Si la cuenta elegida ya no está, volver a "Todas"
+  if (adsAccountFilter !== 'all' && !accounts.some((a) => a.id === adsAccountFilter)) adsAccountFilter = 'all';
+
+  // Botones del selector de cuenta (solo cuando hay más de una)
+  const accFilterEl = $('#adsAccountFilter');
+  if (adsMultiAccount) {
+    accFilterEl.hidden = false;
+    accFilterEl.innerHTML = '<span class="ads-filter-label">Cuenta:</span>'
+      + '<button type="button" class="ads-filter-btn' + (adsAccountFilter === 'all' ? ' active' : '') + '" data-acc="all">Todas</button>'
+      + accounts.map((a) => '<button type="button" class="ads-filter-btn' + (adsAccountFilter === a.id ? ' active' : '') + '" data-acc="' + escapeHtml(a.id) + '">' + escapeHtml(a.name || a.id) + '</button>').join('');
+  } else {
+    accFilterEl.hidden = true;
+    adsAccountFilter = 'all';
+  }
+
+  const selAcc = adsAccountFilter !== 'all' ? accounts.find((a) => a.id === adsAccountFilter) : null;
+  $('#adsAccountName').textContent = selAcc
+    ? (selAcc.name || 'Cuenta ' + selAcc.id)
+    : (adsMultiAccount
+      ? accounts.length + ' cuentas: ' + accounts.map((a) => a.name || a.id).join(', ')
+      : (acc.name ? acc.name + ' · ' : '') + 'Cuenta ' + (acc.id || ''));
   $('#adsSyncAt').textContent = ov.lastSyncAt ? 'Última actualización: ' + formatDate(ov.lastSyncAt) : 'Todavía no se sincronizó';
   const err = $('#adsError');
   if (ov.lastError) { err.textContent = '⚠️ ' + ov.lastError; err.hidden = false; } else { err.hidden = true; }
 
-  const cur = acc.currency || 'ARS';
+  // Scope: una cuenta elegida o el combinado de todas
+  const scope = (adsAccountFilter !== 'all' && ov.byAccount && ov.byAccount[adsAccountFilter]) ? ov.byAccount[adsAccountFilter] : ov;
+  const cur = (selAcc && selAcc.currency) || ov.currency || acc.currency || 'ARS';
   const curLabel = $('#adsBoostCur'); if (curLabel) curLabel.textContent = cur;
-  $('#adsTotals').innerHTML = [
-    adsTotalCard('Hoy', ov.today, cur),
-    adsTotalCard('Ayer', ov.yesterday, cur),
-    adsTotalCard('Últimos 7 días', ov.last7, cur),
-    adsTotalCard('Últimos 30 días', ov.last30, cur),
-  ].join('');
-
-  const camps = ov.campaigns || [];
   adsCurrency = cur;
+
+  const filter = adsPlatformFilter;
+  const bp = scope.byPlatform || {};
+  const totals = filter === 'all'
+    ? [['Hoy', scope.today], ['Ayer', scope.yesterday], ['Últimos 7 días', scope.last7], ['Últimos 30 días', scope.last30]]
+    : [['Hoy', adsPlatMetric(bp.today, filter)], ['Ayer', adsPlatMetric(bp.yesterday, filter)], ['Últimos 7 días', adsPlatMetric(bp.last7, filter)], ['Últimos 30 días', adsPlatMetric(bp.last30, filter)]];
+  $('#adsTotals').innerHTML = totals.map(([lbl, m]) => adsTotalCard(lbl, m, cur)).join('');
+
+  // Mapa COMPLETO para las acciones (pausar/activar), sin importar el filtro
   adsCampaignsById = {};
-  for (const c of camps) adsCampaignsById[c.id] = c;
-  $('#adsCampaigns').innerHTML = camps.length
-    ? camps.map((c) => adsCampaignRow(c, cur)).join('')
-    : '<p class="hint">Todavía no hay campañas sincronizadas. Si recién conectaste, esperá unos segundos y tocá 🔄 Actualizar.</p>';
+  for (const c of (ov.campaigns || [])) adsCampaignsById[c.id] = c;
+
+  // Campañas: primero por cuenta, después por plataforma
+  let camps = ov.campaigns || [];
+  if (adsAccountFilter !== 'all') camps = camps.filter((c) => c.accountId === adsAccountFilter);
+  let note = '';
+  if (filter !== 'all') {
+    const before = camps.length;
+    camps = camps.filter((c) => { const m = (c.last7ByPlatform || {})[filter]; return m && (Number(m.spend) > 0 || Number(m.impressions) > 0); });
+    const hidden = before - camps.length;
+    const lbl = filter === 'facebook' ? '📘 Facebook' : '📷 Instagram';
+    note = `<p class="hint">Mostrando solo ${lbl}${hidden ? ` · ${hidden} campaña(s) sin actividad en esta red, ocultas` : ''}.</p>`;
+  }
+  const mixedNote = (ov.mixedCurrency && adsAccountFilter === 'all')
+    ? '<p class="warn-line">⚠️ Tus cuentas usan monedas distintas: los totales combinados pueden no ser exactos. Elegí una cuenta arriba para ver sus números exactos.</p>'
+    : '';
+  $('#adsCampaigns').innerHTML = mixedNote + note + (camps.length
+    ? camps.map((c) => adsCampaignRow(c, cur, filter)).join('')
+    : '<p class="hint">' + (filter === 'all'
+      ? 'No hay campañas activas o con gasto reciente. Si recién conectaste, esperá unos segundos y tocá 🔄 Actualizar.'
+      : 'No hay campañas con actividad en esta red en los últimos 7 días.') + '</p>');
 }
 
 async function renderAdsOverviewForced() {

@@ -20,6 +20,7 @@ function normalize(data) {
   const d = data && typeof data === 'object' ? data : {};
   return {
     account: d.account && typeof d.account === 'object' ? d.account : null,
+    accounts: Array.isArray(d.accounts) ? d.accounts : [],
     lastSyncAt: Number(d.lastSyncAt) || null,
     lastError: typeof d.lastError === 'string' ? d.lastError : null,
     days: d.days && typeof d.days === 'object' ? d.days : {},

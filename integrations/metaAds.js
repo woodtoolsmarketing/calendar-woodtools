@@ -136,6 +136,21 @@ async function getInsights(token, adAccountId, { since, until, level = 'campaign
   return json.data || [];
 }
 
+// Insights con desglose por plataforma (Facebook / Instagram / Messenger / Audience Network).
+// Instagram es una UBICACIÓN de Meta Ads: esto parte las métricas de cada campaña por red.
+async function getInsightsByPlatform(token, adAccountId, { since, until, timeIncrement = 1 } = {}) {
+  const params = {
+    level: 'campaign',
+    fields: 'campaign_id,campaign_name,spend,impressions,clicks,reach,actions',
+    breakdowns: 'publisher_platform',
+    limit: 1000,
+  };
+  if (since && until) params.time_range = JSON.stringify({ since, until });
+  if (timeIncrement) params.time_increment = timeIncrement;
+  const json = await graphGet(`${actId(adAccountId)}/insights`, token, params);
+  return json.data || [];
+}
+
 // ---------------------------------------------------------------------------
 // Escritura (Fase 2: activar/pausar) — requiere ads_management
 // ---------------------------------------------------------------------------
@@ -359,6 +374,77 @@ function sumDays(daysObj, n, nowDate) {
   return t;
 }
 
+// --- Desglose por plataforma (Facebook / Instagram / …) ---
+function normalizePlatform(p) {
+  const s = String(p || '').toLowerCase();
+  return ['facebook', 'instagram', 'messenger', 'audience_network'].includes(s) ? s : 'other';
+}
+function emptyPlatMetric() {
+  return { spend: 0, impressions: 0, clicks: 0, reach: 0, results: { mensajes: 0, leads: 0, compras: 0, registros: 0, linkClicks: 0, interacciones: 0 } };
+}
+function addPlatMetric(t, m) {
+  if (!m) return;
+  t.spend += num(m.spend); t.impressions += num(m.impressions);
+  t.clicks += num(m.clicks); t.reach += num(m.reach);
+  const res = m.results || {};
+  for (const k of Object.keys(t.results)) t.results[k] += num(res[k]);
+}
+
+// Suma el desglose por plataforma guardado en las fotos diarias, sobre un conjunto de días.
+// campaignId opcional: si se pasa, suma el de esa campaña; si no, el total de la cuenta.
+// Devuelve { facebook:{...}, instagram:{...}, ... } (solo las plataformas con datos).
+function sumPlatformForKeys(daysObj, keys, campaignId) {
+  const out = {};
+  for (const k of keys || []) {
+    const day = daysObj && daysObj[k];
+    if (!day) continue;
+    const src = campaignId
+      ? (day.perCampaign && day.perCampaign[campaignId] && day.perCampaign[campaignId].platforms)
+      : day.platforms;
+    if (!src) continue;
+    for (const [plat, m] of Object.entries(src)) {
+      if (!out[plat]) out[plat] = emptyPlatMetric();
+      addPlatMetric(out[plat], m);
+    }
+  }
+  return out;
+}
+function sumPlatformDays(daysObj, n, nowDate, campaignId) {
+  return sumPlatformForKeys(daysObj, lastNDayKeys(n, nowDate), campaignId);
+}
+
+// --- Totales por CUENTA (para el selector de cuenta) ---
+// Lee day.byAccount[accId] (guardado por el sondeo multi-cuenta).
+function sumAccountForKeys(daysObj, accId, keys) {
+  const t = emptyTotals();
+  for (const k of keys || []) {
+    const day = daysObj && daysObj[k];
+    const ab = day && day.byAccount && day.byAccount[accId];
+    if (!ab) continue;
+    t.spend += num(ab.spend); t.impressions += num(ab.impressions);
+    t.reach += num(ab.reach); t.clicks += num(ab.clicks);
+    const res = ab.results || {};
+    for (const key of Object.keys(t.results)) t.results[key] += num(res[key]);
+  }
+  t.ctr = t.impressions ? (t.clicks / t.impressions) * 100 : 0;
+  t.cpc = t.clicks ? t.spend / t.clicks : 0;
+  t.cpm = t.impressions ? (t.spend / t.impressions) * 1000 : 0;
+  return t;
+}
+function sumAccountPlatformForKeys(daysObj, accId, keys) {
+  const out = {};
+  for (const k of keys || []) {
+    const day = daysObj && daysObj[k];
+    const platforms = day && day.byAccount && day.byAccount[accId] && day.byAccount[accId].platforms;
+    if (!platforms) continue;
+    for (const [plat, m] of Object.entries(platforms)) {
+      if (!out[plat]) out[plat] = emptyPlatMetric();
+      addPlatMetric(out[plat], m);
+    }
+  }
+  return out;
+}
+
 // Agrupa filas diarias por campaña → { [campaignId]: { name, byDay: {YYYY-MM-DD: row}, total } }
 function groupByCampaign(rows) {
   const out = {};
@@ -377,6 +463,7 @@ module.exports = {
   listAdAccounts,
   getCampaigns,
   getInsights,
+  getInsightsByPlatform,
   setEntityStatus,
   getPagePosts,
   createBoost,
@@ -397,6 +484,13 @@ module.exports = {
   lastNDayKeys,
   emptyTotals,
   sumDays,
+  normalizePlatform,
+  emptyPlatMetric,
+  addPlatMetric,
+  sumPlatformForKeys,
+  sumPlatformDays,
+  sumAccountForKeys,
+  sumAccountPlatformForKeys,
   ymd,
   _toUserError: toUserError,
   _META_API_VERSION: META_API_VERSION,
