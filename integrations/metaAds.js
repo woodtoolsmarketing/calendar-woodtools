@@ -55,9 +55,9 @@ function toUserError(e) {
   return adsError('Meta devolvió un error: ' + detail + (code ? ' (código ' + code + ')' : ''));
 }
 
-async function graphGet(pathStr, token, params, timeout) {
-  if (!token) throw adsError('Falta el token de anuncios. Conectá Publicidad primero.', { needsReconnect: true });
-  const url = buildUrl(`${GRAPH}/${pathStr}`, { ...params, access_token: token });
+// Descarga y parsea una URL ya armada de Graph. La usan graphGet (primera página) y
+// graphGetAll (el seguidor de cursores, que recibe la URL completa de paging.next).
+async function graphGetJson(url, timeout) {
   let res;
   try {
     res = await fetch(url, { signal: AbortSignal.timeout(timeout || TIMEOUT_MS) });
@@ -75,6 +75,31 @@ async function graphGet(pathStr, token, params, timeout) {
     throw toUserError(err);
   }
   return json;
+}
+
+async function graphGet(pathStr, token, params, timeout) {
+  if (!token) throw adsError('Falta el token de anuncios. Conectá Publicidad primero.', { needsReconnect: true });
+  const url = buildUrl(`${GRAPH}/${pathStr}`, { ...params, access_token: token });
+  return graphGetJson(url, timeout);
+}
+
+// Igual que graphGet pero SIGUE los cursores de paginación: tras la primera página va
+// detrás de json.paging.next (una URL completa, que ya trae cursor y token) acumulando
+// json.data hasta que no haya más páginas. Sin esto, Graph trunca a `limit` filas en
+// SILENCIO (sin error), perdiendo datos cuando hay muchas filas (campaña × día × plataforma).
+// maxPages es un tope de seguridad anti-bucle. Devuelve el array acumulado (no el sobre).
+async function graphGetAll(pathStr, token, params, { maxPages = 50, timeout } = {}) {
+  const first = await graphGet(pathStr, token, params, timeout);
+  let rows = Array.isArray(first.data) ? first.data.slice() : [];
+  let next = first.paging && first.paging.next;
+  let pages = 1;
+  while (next && pages < maxPages) {
+    const json = await graphGetJson(next, timeout);
+    if (Array.isArray(json.data)) rows = rows.concat(json.data);
+    next = json.paging && json.paging.next;
+    pages += 1;
+  }
+  return rows;
 }
 
 // act_123 ⟷ 123 (acepta cualquiera de las dos formas)
@@ -132,8 +157,8 @@ async function getInsights(token, adAccountId, { since, until, level = 'campaign
   };
   if (since && until) params.time_range = JSON.stringify({ since, until });
   if (timeIncrement) params.time_increment = timeIncrement;
-  const json = await graphGet(`${actId(adAccountId)}/insights`, token, params);
-  return json.data || [];
+  // Paginado: filas = campañas × días; con muchas campañas supera `limit` en varias páginas.
+  return graphGetAll(`${actId(adAccountId)}/insights`, token, params);
 }
 
 // Insights con desglose por plataforma (Facebook / Instagram / Messenger / Audience Network).
@@ -147,8 +172,8 @@ async function getInsightsByPlatform(token, adAccountId, { since, until, timeInc
   };
   if (since && until) params.time_range = JSON.stringify({ since, until });
   if (timeIncrement) params.time_increment = timeIncrement;
-  const json = await graphGet(`${actId(adAccountId)}/insights`, token, params);
-  return json.data || [];
+  // Paginado: filas = campañas × días × plataformas; es el más expuesto a pasar `limit`.
+  return graphGetAll(`${actId(adAccountId)}/insights`, token, params);
 }
 
 // ---------------------------------------------------------------------------
