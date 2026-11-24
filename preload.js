@@ -41,10 +41,30 @@ contextBridge.exposeInMainWorld('api', {
   adsOverview: () => ipcRenderer.invoke('ads:getOverview'),
   adsRefresh: () => ipcRenderer.invoke('ads:refresh'),
   adsSetStatus: (payload) => ipcRenderer.invoke('ads:setStatus', payload),
+  adsSetAlias: (payload) => ipcRenderer.invoke('ads:setAlias', payload),
+  adsSetObjectives: (payload) => ipcRenderer.invoke('ads:setObjectives', payload),
+  adsAddSchedule: (payload) => ipcRenderer.invoke('ads:addSchedule', payload),
+  adsDeleteSchedule: (payload) => ipcRenderer.invoke('ads:deleteSchedule', payload),
+  adsGetConsultas: () => ipcRenderer.invoke('ads:getConsultas'),
+  adsGetReport: (payload) => ipcRenderer.invoke('ads:getReport', payload),
+
+  // Google Ads (REST v26; OAuth reutiliza el cliente de YouTube)
+  gadsStatus: () => ipcRenderer.invoke('gads:status'),
+  gadsConnect: (payload) => ipcRenderer.invoke('gads:connect', payload),
+  gadsDisconnect: () => ipcRenderer.invoke('gads:disconnect'),
+  gadsOverview: () => ipcRenderer.invoke('gads:getOverview'),
+  gadsSetStatus: (payload) => ipcRenderer.invoke('gads:setStatus', payload),
   adsListPosts: () => ipcRenderer.invoke('ads:listPosts'),
   adsCreateBoost: (payload) => ipcRenderer.invoke('ads:createBoost', payload),
   onAdsChanged: (cb) => ipcRenderer.on('ads:changed', () => cb()),
   onOpenAds: (cb) => ipcRenderer.on('ui:openAds', () => cb()),
+
+  // Historial / Comparativa (hoja de cálculo en userData; sólo métricas)
+  histStatus: () => ipcRenderer.invoke('hist:status'),
+  histComparison: (payload) => ipcRenderer.invoke('hist:getComparison', payload),
+  histUpdate: () => ipcRenderer.invoke('hist:update'),
+  histRebuild: (payload) => ipcRenderer.invoke('hist:rebuild', payload),
+  histOpen: () => ipcRenderer.invoke('hist:open'),
 
   // App
   openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),

@@ -151,6 +151,35 @@ async function getInsightsByPlatform(token, adAccountId, { since, until, timeInc
   return json.data || [];
 }
 
+// Insights con desglose DEMOGRÁFICO (edad / género / región / país). `breakdowns` es la cadena de
+// Meta: 'age', 'gender', 'age,gender', 'region', 'country'. Agregado sobre el rango (sin time_increment).
+async function getInsightsByBreakdown(token, adAccountId, breakdowns, { since, until } = {}) {
+  const params = {
+    level: 'account',
+    fields: 'impressions,reach,clicks,spend,actions',
+    breakdowns,
+    limit: 500,
+  };
+  if (since && until) params.time_range = JSON.stringify({ since, until });
+  const json = await graphGet(`${actId(adAccountId)}/insights`, token, params);
+  return json.data || [];
+}
+
+// Agrupa filas de un desglose demográfico por sus claves (ej. ['age'] o ['region']) → lista con
+// métricas por bucket (impresiones, alcance, clics, gasto, resultados, ctr). Función PURA.
+function groupByBreakdown(rows, keys) {
+  const list = (Array.isArray(rows) ? rows : []).map((r) => {
+    const t = aggregateRows([r]);
+    return {
+      label: keys.map((k) => r[k] || '(sin dato)').join(' · '),
+      impressions: t.impressions, reach: t.reach, clicks: t.clicks, spend: t.spend,
+      results: t.results, ctr: t.ctr,
+    };
+  });
+  list.sort((a, b) => b.impressions - a.impressions);
+  return list;
+}
+
 // ---------------------------------------------------------------------------
 // Escritura (Fase 2: activar/pausar) — requiere ads_management
 // ---------------------------------------------------------------------------
@@ -458,12 +487,56 @@ function groupByCampaign(rows) {
   return out;
 }
 
+// Ventana de "recuperación" de una semanal: si la PC estuvo apagada a la hora fijada, todavía se
+// dispara al volver dentro de estas horas (incluso cruzando la medianoche al día siguiente). Pasado
+// eso, se considera perdida (no tiene sentido pausar muchas horas tarde) y espera a la semana que viene.
+const WEEKLY_GRACE_MS = 8 * 60 * 60 * 1000;
+
+// Instante (ms) de la ocurrencia semanal MÁS RECIENTE que ya pasó (hoy o hasta 7 días atrás), o null.
+function mostRecentWeeklyOccurrence(sched, now) {
+  const dow = Number(sched.dow);
+  const hh = Number(sched.hh) || 0, mm = Number(sched.mm) || 0;
+  const nowMs = now.getTime();
+  for (let back = 0; back < 8; back++) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - back);
+    d.setHours(hh, mm, 0, 0);
+    if (d.getDay() === dow && d.getTime() <= nowMs) return d.getTime();
+  }
+  return null;
+}
+
+// ¿La pausa programada `sched` debe ejecutarse en el instante `now` (Date)? Función PURA.
+// - 'once': dispara cuando ya pasó su momento y todavía no se ejecutó (done=false). Recupera a cualquier hora.
+// - 'weekly': dispara en la ocurrencia más reciente dentro de la ventana de gracia (recupera cruzando la
+//   medianoche si la PC estuvo apagada), una sola vez por ocurrencia.
+function scheduleDue(sched, now) {
+  if (!sched || typeof sched !== 'object') return false;
+  const nowMs = now.getTime();
+  if (sched.type === 'once') {
+    return !sched.done && Number(sched.whenMs) > 0 && nowMs >= Number(sched.whenMs);
+  }
+  if (sched.type === 'weekly') {
+    const occMs = mostRecentWeeklyOccurrence(sched, now);
+    if (occMs == null) return false;
+    if (nowMs - occMs > WEEKLY_GRACE_MS) return false;                    // ocurrencia demasiado vieja (perdida)
+    if (sched.lastRunAt && Number(sched.lastRunAt) >= occMs) return false; // ya corrió esta ocurrencia
+    // Creada DESPUÉS de esta ocurrencia → no la dispares (recién la próxima): evita confundir
+    // "la PC estaba apagada a esa hora" con "la acabo de crear pasada la hora".
+    if (Number(sched.createdAt) > occMs) return false;
+    return true;
+  }
+  return false;
+}
+
 module.exports = {
   // API
   listAdAccounts,
   getCampaigns,
   getInsights,
   getInsightsByPlatform,
+  getInsightsByBreakdown,
+  groupByBreakdown,
   setEntityStatus,
   getPagePosts,
   createBoost,
@@ -492,6 +565,8 @@ module.exports = {
   sumAccountForKeys,
   sumAccountPlatformForKeys,
   ymd,
+  scheduleDue,
+  mostRecentWeeklyOccurrence,
   _toUserError: toUserError,
   _META_API_VERSION: META_API_VERSION,
 };
