@@ -1691,15 +1691,47 @@ ipcMain.handle('content:publishNow', async (_e, task) => {
 // Publicidad (Meta / Instagram Ads) — Fase 1: SOLO lectura de rendimiento
 // Instagram Ads = Meta Ads con ubicación de Instagram: una sola cuenta (act_...).
 // ----------------------------------------------------------------------------
-const ADS_PLATFORM = 'metaAds';
+const ADS_PLATFORM = 'metaAds';            // WoodTools (conexión original)
+const ADS_PLATFORM_SHARK = 'metaAdsShark'; // Shark (segunda conexión Meta, con su propio token)
+const ADS_CONNS = [
+  { key: ADS_PLATFORM, label: 'WoodTools' },
+  { key: ADS_PLATFORM_SHARK, label: 'Shark' },
+];
 let adsPolling = false;
 
-function adsCreds() {
-  try { return credentials.getPlatform(ADS_PLATFORM) || {}; } catch (_) { return {}; }
+function connCreds(key) { try { return credentials.getPlatform(key) || {}; } catch (_) { return {}; } }
+function adsCreds() { return connCreds(ADS_PLATFORM); } // conexión principal (compat)
+function adsConnLabel(key) {
+  const def = ADS_CONNS.find((x) => x.key === key);
+  return connCreds(key).label || (def && def.label) || key;
 }
-function adsConnected() {
-  const c = adsCreds();
-  return !!(c && c.token && c.adAccountId);
+// Conexiones de Meta configuradas (las que tienen token). Cada una: { key, label, creds }.
+function adsConnList() {
+  return ADS_CONNS
+    .map((x) => ({ key: x.key, label: adsConnLabel(x.key), creds: connCreds(x.key) }))
+    .filter((x) => x.creds && x.creds.token);
+}
+function adsConnected() { return adsConnList().length > 0; }
+// Resuelve la conexión (y su token) dueña de una cuenta publicitaria, usando el mapa que arma pollAds.
+// Así activar/pausar/promocionar una campaña de Shark usa el token de Shark, y uno de WoodTools el suyo.
+function adsConnForAccount(store, accId) {
+  const key = (store && store.accountConn && store.accountConn[accId]) || ADS_PLATFORM;
+  if (connCreds(key).token) return { key, label: adsConnLabel(key), creds: connCreds(key) };
+  return adsConnList()[0] || { key: ADS_PLATFORM, label: adsConnLabel(ADS_PLATFORM), creds: adsCreds() };
+}
+// Resuelve la Página (id + token) para promocionar en una cuenta: WoodTools usa la Página de la
+// conexión de Facebook (plataforma 'meta'); una conexión con Página propia (Shark) usa la suya.
+function adsPageForAccount(accId) {
+  const store = adsStore.read();
+  const conn = adsConnForAccount(store, accId);
+  if (conn.key === ADS_PLATFORM) {
+    const m = (() => { try { return credentials.getPlatform('meta') || {}; } catch (_) { return {}; } })();
+    if (m.pageId && m.pageToken) return { pageId: String(m.pageId), pageToken: m.pageToken };
+    return { error: 'Primero conectá Facebook (hace falta la Página de WoodTools para promocionar).' };
+  }
+  const cr = conn.creds || {};
+  if (cr.pageId && (cr.pageToken || cr.token)) return { pageId: String(cr.pageId), pageToken: cr.pageToken || cr.token };
+  return { error: 'La cuenta de ' + conn.label + ' no tiene una Página para promocionar. Reconectá ' + conn.label + ' con un token que incluya permisos de Páginas.' };
 }
 function openAdsUI() {
   showMainWindow();
@@ -1772,6 +1804,7 @@ function maybeMorningAdsSummary(store) {
 function persistPollResult(store) {
   const fresh = adsStore.read();
   fresh.accounts = store.accounts;
+  fresh.accountConn = store.accountConn;
   fresh.days = store.days;
   fresh.campaigns = store.campaigns;
   fresh.lastSyncAt = store.lastSyncAt;
@@ -1784,7 +1817,6 @@ function persistPollResult(store) {
 // (reescribe los últimos 7–30 días), así recupera lo de la noche o de días con la PC apagada.
 async function pollAds({ force } = {}) {
   if (adsPolling || !adsConnected()) return;
-  const c = adsCreds();
   const store = adsStore.read();
   const now = Date.now();
   if (!force && store.lastSyncAt && now - store.lastSyncAt < 25 * 60 * 1000) return;
@@ -1794,25 +1826,40 @@ async function pollAds({ force } = {}) {
     // Siempre 30 días: al agregar una cuenta nueva (ej. Instagram) entra todo su mes de una.
     const { since, until } = metaAds.rangeForDays(30, nowDate);
 
-    // TODAS las cuentas publicitarias que ve el token (Meta Ads + la de Instagram, etc.)
+    // TODAS las cuentas publicitarias de TODAS las conexiones de Meta (WoodTools + Shark).
+    // Cada cuenta recuerda su conexión (connKey) y su token, para operar con el correcto.
+    const conns = adsConnList();
     let accounts = [];
-    try { accounts = await metaAds.listAdAccounts(c.token); } catch (_) {}
-    if (!accounts.length && c.adAccountId) {
-      accounts = [{ id: String(c.adAccountId), name: c.adAccountName || '', currency: c.currency || '', timezone: c.timezone || '' }];
+    const accountConn = {}; // accountId -> connKey
+    const accToken = {};    // accountId -> token
+    for (const conn of conns) {
+      let accs = [];
+      try { accs = await metaAds.listAdAccounts(conn.creds.token); } catch (_) {}
+      if (!accs.length && conn.creds.adAccountId) {
+        accs = [{ id: String(conn.creds.adAccountId), name: conn.creds.adAccountName || '', currency: conn.creds.currency || '', timezone: conn.creds.timezone || '' }];
+      }
+      for (const a of accs) {
+        if (accountConn[a.id]) continue; // una cuenta la administra una sola conexión
+        accountConn[a.id] = conn.key;
+        accToken[a.id] = conn.creds.token;
+        accounts.push({ ...a, connKey: conn.key, connLabel: conn.label });
+      }
     }
-    store.accounts = accounts.map((a) => ({ id: a.id, name: a.name, currency: a.currency, active: a.active }));
+    store.accounts = accounts.map((a) => ({ id: a.id, name: a.name, currency: a.currency, active: a.active, connKey: a.connKey, connLabel: a.connLabel }));
+    store.accountConn = accountConn;
 
     // Foto diaria de la ventana, SUMANDO todas las cuentas en el mismo bucket por día.
     const windowDays = {};
     const campaignsMap = {};
     let anyOk = false;
     for (const acc of accounts) {
+      const token = accToken[acc.id];
       let camps = [];
       let rows = [];
       try {
         [camps, rows] = await Promise.all([
-          metaAds.getCampaigns(c.token, acc.id),
-          metaAds.getInsights(c.token, acc.id, { since, until, level: 'campaign', timeIncrement: 1 }),
+          metaAds.getCampaigns(token, acc.id),
+          metaAds.getInsights(token, acc.id, { since, until, level: 'campaign', timeIncrement: 1 }),
         ]);
         anyOk = true;
       } catch (e) {
@@ -1824,14 +1871,15 @@ async function pollAds({ force } = {}) {
           name: cam.name, objective: cam.objective, effectiveStatus: cam.effectiveStatus,
           running: cam.running, dailyBudget: cam.dailyBudget, lifetimeBudget: cam.lifetimeBudget,
           startTime: cam.startTime, stopTime: cam.stopTime,
-          accountId: acc.id, accountName: acc.name, currency: acc.currency, lastSeenAt: now,
+          accountId: acc.id, accountName: acc.name, currency: acc.currency,
+          connKey: acc.connKey, connLabel: acc.connLabel, lastSeenAt: now,
         };
       }
       // Alcance ÚNICO real de 30 días por campaña: Meta lo deduplica sobre el rango (time_increment=0),
       // a diferencia de la suma diaria que sobrecuenta personas. Se usa para comparar con el objetivo
       // de alcance. Best-effort: si falla, el objetivo cae a la suma (aproximada).
       try {
-        const aggRows = await metaAds.getInsights(c.token, acc.id, { since, until, level: 'campaign', timeIncrement: 0 });
+        const aggRows = await metaAds.getInsights(token, acc.id, { since, until, level: 'campaign', timeIncrement: 0 });
         for (const r of aggRows) {
           const id = String(r.campaign_id || '');
           if (id && campaignsMap[id]) campaignsMap[id].reach30 = Number(r.reach) || 0;
@@ -1854,7 +1902,7 @@ async function pollAds({ force } = {}) {
       }
       // Desglose por plataforma de esta cuenta (best-effort)
       try {
-        const platRows = await metaAds.getInsightsByPlatform(c.token, acc.id, { since, until, timeIncrement: 1 });
+        const platRows = await metaAds.getInsightsByPlatform(token, acc.id, { since, until, timeIncrement: 1 });
         for (const row of platRows) {
           const day = row.date_start;
           if (!day) continue;
@@ -1921,6 +1969,7 @@ function buildAdsOverview() {
     name: cam.name, objective: cam.objective, effectiveStatus: cam.effectiveStatus,
     running: !!cam.running, dailyBudget: cam.dailyBudget != null ? cam.dailyBudget : null,
     accountId: cam.accountId || '', accountName: cam.accountName || '', accountCurrency: cam.currency || currency,
+    connLabel: cam.connLabel || '',
     alias: (store.aliases && store.aliases[id]) || '',
     displayName: (store.aliases && store.aliases[id]) || cam.name || '(sin nombre)',
     objectives: (store.objectives && store.objectives[id]) || null,
@@ -1955,9 +2004,16 @@ function buildAdsOverview() {
   }
 
   return {
-    connected: !!(c.token && c.adAccountId),
+    connected: adsConnected(),
     account: accounts[0] || store.account || (c.adAccountId ? { id: c.adAccountId, name: c.adAccountName || '', currency: c.currency || '' } : null),
     accounts,
+    connections: ADS_CONNS.map((x) => {
+      const cr = connCreds(x.key);
+      const hasPage = x.key === ADS_PLATFORM
+        ? !!(() => { try { return (credentials.getPlatform('meta') || {}).pageId; } catch (_) { return null; } })()
+        : !!cr.pageId;
+      return { key: x.key, label: adsConnLabel(x.key), connected: !!cr.token, adAccountId: cr.adAccountId || '', adAccountName: cr.adAccountName || '', hasPage };
+    }),
     byAccount,
     mixedCurrency,
     currency,
@@ -2017,29 +2073,37 @@ function adsOccurrenceDue(sched, now) {
 // re-pausa una campaña que el usuario reactivó en una cuenta sana mientras otra cuenta sigue fallando).
 // Devuelve {pausedNow, hadError, msg}.
 async function pauseScheduleTargets(sched) {
-  const c = adsCreds();
-  if (!c.token) return { pausedNow: 0, hadError: true, msg: 'Falta el token de Publicidad.' };
-  // Campaña puntual
+  const conns = adsConnList();
+  if (!conns.length) return { pausedNow: 0, hadError: true, msg: 'Falta el token de Publicidad.' };
+  // Campaña puntual: usar el token de la conexión dueña de esa campaña.
   if (sched.target !== 'ALL') {
-    try { await metaAds.setEntityStatus(c.token, String(sched.target), 'PAUSED'); return { pausedNow: 1, hadError: false, msg: 'Pausé la campaña.' }; }
+    const store = adsStore.read();
+    const accId = (store.campaigns && store.campaigns[String(sched.target)] && store.campaigns[String(sched.target)].accountId) || '';
+    const token = adsConnForAccount(store, accId).creds.token;
+    try { await metaAds.setEntityStatus(token, String(sched.target), 'PAUSED'); return { pausedNow: 1, hadError: false, msg: 'Pausé la campaña.' }; }
     catch (e) { return { pausedNow: 0, hadError: true, msg: 'No se pudo pausar: ' + metaAds._toUserError(e).message }; }
   }
-  // Todas las cuentas
-  let accounts;
-  try { accounts = await metaAds.listAdAccounts(c.token); }
-  catch (e) { return { pausedNow: 0, hadError: true, msg: 'No se pudieron leer las cuentas: ' + metaAds._toUserError(e).message }; }
-  if (!accounts.length && c.adAccountId) accounts = [{ id: String(c.adAccountId) }]; // respaldo, como pollAds
-  if (!accounts.length) return { pausedNow: 0, hadError: true, msg: 'Meta no devolvió cuentas; reintento.' }; // lista vacía = error, NO falso éxito
+  // Todas las cuentas de TODAS las conexiones (cada una con su token).
+  const accEntries = []; // { id, token }
+  const seen = {};
+  for (const conn of conns) {
+    let accs;
+    try { accs = await metaAds.listAdAccounts(conn.creds.token); }
+    catch (e) { return { pausedNow: 0, hadError: true, msg: 'No se pudieron leer las cuentas: ' + metaAds._toUserError(e).message }; }
+    if ((!accs || !accs.length) && conn.creds.adAccountId) accs = [{ id: String(conn.creds.adAccountId) }]; // respaldo, como pollAds
+    for (const a of (accs || [])) { if (a && a.id && !seen[a.id]) { seen[a.id] = 1; accEntries.push({ id: String(a.id), token: conn.creds.token }); } }
+  }
+  if (!accEntries.length) return { pausedNow: 0, hadError: true, msg: 'Meta no devolvió cuentas; reintento.' }; // lista vacía = error, NO falso éxito
   sched.occDone = Array.isArray(sched.occDone) ? sched.occDone : [];
   let pausedNow = 0, pending = 0, lastErr = '';
-  for (const a of accounts) {
+  for (const a of accEntries) {
     if (sched.occDone.indexOf(a.id) >= 0) continue; // cuenta ya resuelta esta ocurrencia → no re-tocar
     let camps;
-    try { camps = await metaAds.getCampaigns(c.token, a.id); }
+    try { camps = await metaAds.getCampaigns(a.token, a.id); }
     catch (e) { pending++; lastErr = metaAds._toUserError(e).message; continue; }
     let failed = 0;
     for (const id of camps.filter((x) => x.running).map((x) => String(x.id))) {
-      try { await metaAds.setEntityStatus(c.token, id, 'PAUSED'); pausedNow++; }
+      try { await metaAds.setEntityStatus(a.token, id, 'PAUSED'); pausedNow++; }
       catch (e) { failed++; lastErr = metaAds._toUserError(e).message; }
     }
     if (failed === 0) sched.occDone.push(a.id); // cuenta leída y pausada OK → no volver a escanearla
@@ -2140,8 +2204,9 @@ ipcMain.handle('ads:status', () => {
   const c = adsCreds();
   const store = adsStore.read();
   return {
-    connected: !!(c.token && c.adAccountId),
+    connected: adsConnected(),
     account: store.account || (c.adAccountId ? { id: c.adAccountId, name: c.adAccountName || '', currency: c.currency || '' } : null),
+    connections: ADS_CONNS.map((x) => { const cr = connCreds(x.key); return { key: x.key, label: adsConnLabel(x.key), connected: !!cr.token, adAccountId: cr.adAccountId || '', adAccountName: cr.adAccountName || '' }; }),
     lastSyncAt: store.lastSyncAt,
     lastError: store.lastError,
   };
@@ -2162,16 +2227,30 @@ ipcMain.handle('ads:listAccounts', async (_e, token) => {
 ipcMain.handle('ads:connect', async (_e, payload) => {
   try {
     const p = payload || {};
+    const key = (p.platform === ADS_PLATFORM_SHARK || p.platform === ADS_PLATFORM) ? p.platform : ADS_PLATFORM;
     const t = String(p.token || '').trim();
     if (!t) return { ok: false, error: 'Falta el token.' };
     if (!p.adAccountId) return { ok: false, error: 'Elegí una cuenta publicitaria.' };
     await metaAds.getCampaigns(t, p.adAccountId); // valida permiso + cuenta
-    credentials.setPlatform(ADS_PLATFORM, {
+    const extra = {};
+    // Conexión con Página propia (ej. Shark): tomamos su Página del propio token para poder
+    // promocionar con la Página correcta. Best-effort; si el token no da páginas, queda sin.
+    if (key !== ADS_PLATFORM) {
+      try {
+        const pages = await metaAds.listPages(t);
+        if (pages && pages.length) { extra.pageId = pages[0].id; extra.pageName = pages[0].name || ''; extra.pageToken = pages[0].accessToken || ''; }
+      } catch (_) {}
+    }
+    credentials.setPlatform(key, {
       token: t, adAccountId: String(p.adAccountId), adAccountName: p.adAccountName || '',
       currency: p.currency || '', timezone: p.timezone || '',
+      label: (ADS_CONNS.find((x) => x.key === key) || {}).label || '',
+      ...extra,
     });
     const store = adsStore.read();
-    store.account = { id: String(p.adAccountId), name: p.adAccountName || '', currency: p.currency || '', timezone: p.timezone || '' };
+    if (key === ADS_PLATFORM) {
+      store.account = { id: String(p.adAccountId), name: p.adAccountName || '', currency: p.currency || '', timezone: p.timezone || '' };
+    }
     store.lastError = null;
     adsStore.write(store);
     pollAds({ force: true }).catch(() => {});
@@ -2181,8 +2260,16 @@ ipcMain.handle('ads:connect', async (_e, payload) => {
   }
 });
 
-ipcMain.handle('ads:disconnect', () => {
-  try { credentials.clearPlatform(ADS_PLATFORM); } catch (_) {}
+ipcMain.handle('ads:disconnect', (_e, payload) => {
+  const key = (payload && (payload.platform === ADS_PLATFORM_SHARK || payload.platform === ADS_PLATFORM)) ? payload.platform : ADS_PLATFORM;
+  try { credentials.clearPlatform(key); } catch (_) {}
+  try {
+    if (!adsConnList().length) {
+      const s = adsStore.read(); s.accounts = []; s.accountConn = {}; adsStore.write(s);
+    } else {
+      pollAds({ force: true }).catch(() => {}); // re-sondea para quitar las cuentas de la conexión borrada
+    }
+  } catch (_) {}
   return true;
 });
 
@@ -2209,16 +2296,21 @@ ipcMain.handle('ads:getConsultas', async () => {
 // Trae la demografía fresca de Meta (no se guarda) y la tendencia desde las fotos diarias guardadas.
 ipcMain.handle('ads:getReport', async (_e, payload) => {
   try {
-    const c = adsCreds();
-    if (!c.token) return { ok: false, error: 'Conectá Publicidad primero.' };
+    if (!adsConnected()) return { ok: false, error: 'Conectá Publicidad primero.' };
     const accountFilter = (payload && payload.accountId && payload.accountId !== 'all') ? String(payload.accountId) : null;
     const nowDate = new Date();
     const { since, until } = metaAds.rangeForDays(30, nowDate);
 
-    let accounts = [];
-    try { accounts = await metaAds.listAdAccounts(c.token); } catch (_) {}
+    // Cuentas (con su token) de TODAS las conexiones; con filtro, sólo esa cuenta.
+    const accToken = {};
+    for (const conn of adsConnList()) {
+      let accs = [];
+      try { accs = await metaAds.listAdAccounts(conn.creds.token); } catch (_) {}
+      if (!accs.length && conn.creds.adAccountId) accs = [{ id: String(conn.creds.adAccountId) }];
+      for (const a of accs) if (a && a.id && !accToken[a.id]) accToken[a.id] = conn.creds.token;
+    }
+    let accounts = Object.keys(accToken).map((id) => ({ id }));
     if (accountFilter) accounts = accounts.filter((a) => a.id === accountFilter);
-    if (!accounts.length && c.adAccountId) accounts = [{ id: String(c.adAccountId) }];
 
     // Demografía: suma los buckets por etiqueta a través de las cuentas elegidas.
     const empty = () => metaAds.emptyTotals().results;
@@ -2226,7 +2318,7 @@ ipcMain.handle('ads:getReport', async (_e, payload) => {
     for (const bd of ['age', 'gender', 'region']) {
       for (const a of accounts) {
         let rows = [];
-        try { rows = await metaAds.getInsightsByBreakdown(c.token, a.id, bd, { since, until }); } catch (_) { continue; }
+        try { rows = await metaAds.getInsightsByBreakdown(accToken[a.id], a.id, bd, { since, until }); } catch (_) { continue; }
         for (const b of metaAds.groupByBreakdown(rows, [bd])) {
           const cur = merged[bd][b.label] || (merged[bd][b.label] = { label: b.label, impressions: 0, reach: 0, clicks: 0, spend: 0, results: empty() });
           cur.impressions += b.impressions; cur.reach += b.reach; cur.clicks += b.clicks; cur.spend += b.spend;
@@ -2434,8 +2526,10 @@ ipcMain.handle('ads:setStatus', async (_e, payload) => {
     if (!adsConnected()) return { ok: false, error: 'Conectá Publicidad primero.' };
     if (!id) return { ok: false, error: 'Falta la campaña.' };
     if (status !== 'ACTIVE' && status !== 'PAUSED') return { ok: false, error: 'Estado inválido.' };
-    const c = adsCreds();
-    await metaAds.setEntityStatus(c.token, id, status);
+    const store = adsStore.read();
+    const accId = (store.campaigns && store.campaigns[id] && store.campaigns[id].accountId) || '';
+    const token = adsConnForAccount(store, accId).creds.token;
+    await metaAds.setEntityStatus(token, id, status);
     await pollAds({ force: true }); // refresca estado y métricas
     return { ok: true, overview: buildAdsOverview() };
   } catch (e) {
@@ -2444,11 +2538,11 @@ ipcMain.handle('ads:setStatus', async (_e, payload) => {
 });
 
 // Fase 3: lista las publicaciones de la Página para elegir cuál promocionar
-ipcMain.handle('ads:listPosts', async () => {
+ipcMain.handle('ads:listPosts', async (_e, payload) => {
   try {
-    const m = credentials.getPlatform('meta') || {};
-    if (!m.pageId || !m.pageToken) return { ok: false, error: 'Primero conectá Facebook (hace falta la Página para elegir la publicación).' };
-    const posts = await metaAds.getPagePosts(m.pageToken, m.pageId, 25);
+    const page = adsPageForAccount((payload && payload.accountId) || '');
+    if (!page || !page.pageId || !page.pageToken) return { ok: false, error: (page && page.error) || 'Primero conectá Facebook (hace falta la Página para elegir la publicación).' };
+    const posts = await metaAds.getPagePosts(page.pageToken, page.pageId, 25);
     return { ok: true, posts };
   } catch (e) {
     return { ok: false, error: metaAds._toUserError(e).message };
@@ -2465,13 +2559,17 @@ ipcMain.handle('ads:createBoost', async (_e, payload) => {
     const budget = Number(p.dailyBudget);
     if (!(budget > 0)) return { ok: false, error: 'Poné un presupuesto diario válido.' };
     const days = Math.max(1, Math.min(90, parseInt(p.days, 10) || 7));
-    const m = credentials.getPlatform('meta') || {};
-    if (!m.pageId) return { ok: false, error: 'Falta la Página. Conectá Facebook primero.' };
-    const c = adsCreds();
+    const store = adsStore.read();
+    const accId = String(p.accountId || adsCreds().adAccountId || '');
+    const conn = adsConnForAccount(store, accId);
+    const adAccountId = accId || conn.creds.adAccountId;
+    if (!adAccountId) return { ok: false, error: 'No encontré la cuenta publicitaria para promocionar.' };
+    const page = adsPageForAccount(accId);
+    if (!page || !page.pageId || !page.pageToken) return { ok: false, error: (page && page.error) || 'Falta la Página. Conectá Facebook primero.' };
     const startMs = Date.now() + 5 * 60 * 1000;
     const endMs = startMs + days * 24 * 60 * 60 * 1000;
-    const ids = await metaAds.createBoost(c.token, c.adAccountId, {
-      pageId: String(m.pageId),
+    const ids = await metaAds.createBoost(conn.creds.token, adAccountId, {
+      pageId: String(page.pageId),
       postId: String(p.postId),
       objective: p.objective || 'OUTCOME_ENGAGEMENT',
       dailyBudget: budget,
@@ -2510,28 +2608,34 @@ function snapshotConsultasHistory(funnel) {
 // getInsights (que no pagina). El backfill sólo agrega totales diarios (descarta campaign_id), así que no
 // necesita granularidad por campaña. Suma todas las cuentas por día. Devuelve un resumen del backfill.
 async function backfillMetaHistory(months) {
-  const c = adsCreds();
-  if (!c || !c.token) return { ok: false, source: 'meta', error: 'Meta no está conectado.' };
+  const conns = adsConnList();
+  if (!conns.length) return { ok: false, source: 'meta', error: 'Meta no está conectado.' };
   const now = new Date();
   const until = history.ymdLocal(now);
   const since = history.ymdLocal(new Date(now.getFullYear(), now.getMonth() - (months - 1), 1));
-  let accounts = [];
-  try { accounts = await metaAds.listAdAccounts(c.token); } catch (_) {}
-  accounts = (accounts || []).filter((a) => a && a.id);
-  if (!accounts.length && c.adAccountId) accounts = [{ id: String(c.adAccountId) }];
+  // Cuentas únicas de TODAS las conexiones (id -> token dueño). El historial suma todo lo de Meta.
+  const accToken = {};
+  for (const conn of conns) {
+    let accs = [];
+    try { accs = await metaAds.listAdAccounts(conn.creds.token); } catch (_) {}
+    accs = (accs || []).filter((a) => a && a.id);
+    if (!accs.length && conn.creds.adAccountId) accs = [{ id: String(conn.creds.adAccountId) }];
+    for (const a of accs) if (!accToken[a.id]) accToken[a.id] = conn.creds.token;
+  }
+  const accEntries = Object.entries(accToken); // [accountId, token]
   const chunks = history.monthChunks(since, until);
   const byDay = {};
   let got = 0, failed = 0;
   for (const chunk of chunks) {
-    for (const acc of accounts) {
+    for (const [accId, token] of accEntries) {
       try {
-        const raw = await metaAds.getInsights(c.token, acc.id, { since: chunk.since, until: chunk.until, level: 'account', timeIncrement: 1 });
+        const raw = await metaAds.getInsights(token, accId, { since: chunk.since, until: chunk.until, level: 'account', timeIncrement: 1 });
         for (const r of history.metaInsightRowsToDaily(raw, metaAds.pickResults)) {
           const b = byDay[r.fecha] || (byDay[r.fecha] = { fecha: r.fecha, metaGasto: 0, metaImpresiones: 0, metaClics: 0, metaResultados: 0 });
           b.metaGasto += r.metaGasto; b.metaImpresiones += r.metaImpresiones; b.metaClics += r.metaClics; b.metaResultados += r.metaResultados;
         }
         got++;
-      } catch (e) { failed++; console.error('[hist] backfill Meta', chunk.since, acc.id, metaAds._toUserError(e).message); }
+      } catch (e) { failed++; console.error('[hist] backfill Meta', chunk.since, accId, metaAds._toUserError(e).message); }
     }
   }
   const rows = Object.values(byDay).map((b) => ({ fecha: b.fecha, metaGasto: history.round2(b.metaGasto), metaImpresiones: Math.round(b.metaImpresiones), metaClics: Math.round(b.metaClics), metaResultados: Math.round(b.metaResultados) }));

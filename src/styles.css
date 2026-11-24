@@ -400,6 +400,13 @@ input[type="checkbox"] { accent-color: var(--accent); }
 
 /* ===================== MODAL PUBLICIDAD (Meta/IG Ads) ===================== */
 .ads-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+/* Caja de segunda conexión de Meta (Shark) */
+.ads-conn-box { margin: 10px 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg-2); }
+.ads-conn-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ads-conn-name { font-weight: 600; }
+.ads-conn-state { font-size: 12px; color: var(--text-dim); }
+.ads-conn-spacer { flex: 1 1 auto; }
+.ads-conn-form { margin-top: 10px; }
 .ads-totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
 .ads-card {
   background: var(--bg-3); border: 1px solid var(--line); border-left: 4px solid var(--accent);

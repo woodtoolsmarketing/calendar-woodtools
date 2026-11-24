@@ -2204,6 +2204,10 @@ function wire() {
   $('#adsConnectBtn').onclick = () => adsConnect();
   $('#adsRefreshBtn').onclick = () => renderAdsOverviewForced();
   $('#adsDisconnectBtn').onclick = () => adsDisconnect();
+  $('#adsSharkToggle').onclick = () => toggleSharkForm();
+  $('#adsSharkDiscBtn').onclick = () => adsSharkDisconnect();
+  $('#adsSharkListBtn').onclick = () => adsSharkList();
+  $('#adsSharkConnectBtn').onclick = () => adsSharkConnect();
   $('#adsCampaigns').addEventListener('click', onAdsCampaignClick);
   $('#adsConfirmOk').onclick = () => adsConfirmClose(true);
   $('#adsConfirmCancel').onclick = () => adsConfirmClose(false);
@@ -3016,7 +3020,7 @@ async function loadBoostPosts() {
   const msg = $('#adsBoostMsg'); msg.hidden = true;
   btn.disabled = true; btn.textContent = 'Cargando…';
   try {
-    const res = await window.api.adsListPosts();
+    const res = await window.api.adsListPosts({ accountId: adsAccountFilter !== 'all' ? adsAccountFilter : '' });
     if (!res.ok) { msg.className = 'warn-line'; msg.textContent = res.error; msg.hidden = false; return; }
     adsBoostPosts = res.posts || [];
     renderBoostPosts();
@@ -3070,7 +3074,7 @@ async function createBoostNow() {
   if (!ok) return;
   const btn = $('#adsBoostCreate'); btn.disabled = true; btn.textContent = 'Creando…';
   try {
-    const res = await window.api.adsCreateBoost({ postId: post.postId, dailyBudget: budget, days, objective });
+    const res = await window.api.adsCreateBoost({ postId: post.postId, dailyBudget: budget, days, objective, accountId: adsAccountFilter !== 'all' ? adsAccountFilter : '' });
     if (!res.ok) { msg.className = 'warn-line'; msg.textContent = res.error; msg.hidden = false; return; }
     adsBoostSelectedId = null;
     $('#adsBoostForm').hidden = true;
@@ -3293,9 +3297,11 @@ function renderReportCharts(rep) {
 
 function renderAdsFromOverview(ov) {
   setAdsView('overview');
+  renderAdsSharkBox(ov.connections);
   const acc = ov.account || {};
   const accounts = ov.accounts || [];
   adsMultiAccount = accounts.length > 1;
+  const multiConn = (ov.connections || []).filter((c) => c.connected).length > 1;
   // Si la cuenta elegida ya no está, volver a "Todas"
   if (adsAccountFilter !== 'all' && !accounts.some((a) => a.id === adsAccountFilter)) adsAccountFilter = 'all';
 
@@ -3305,7 +3311,7 @@ function renderAdsFromOverview(ov) {
     accFilterEl.hidden = false;
     accFilterEl.innerHTML = '<span class="ads-filter-label">Cuenta:</span>'
       + '<button type="button" class="ads-filter-btn' + (adsAccountFilter === 'all' ? ' active' : '') + '" data-acc="all">Todas</button>'
-      + accounts.map((a) => '<button type="button" class="ads-filter-btn' + (adsAccountFilter === a.id ? ' active' : '') + '" data-acc="' + escapeHtml(a.id) + '">' + escapeHtml(a.name || a.id) + '</button>').join('');
+      + accounts.map((a) => '<button type="button" class="ads-filter-btn' + (adsAccountFilter === a.id ? ' active' : '') + '" data-acc="' + escapeHtml(a.id) + '">' + escapeHtml((a.name || a.id) + (multiConn && a.connLabel ? ' · ' + a.connLabel : '')) + '</button>').join('');
   } else {
     accFilterEl.hidden = true;
     adsAccountFilter = 'all';
@@ -3532,8 +3538,99 @@ async function adsConnect() {
 }
 
 async function adsDisconnect() {
-  try { await window.api.adsDisconnect(); } catch (_) {}
-  setAdsView('setup');
+  try { await window.api.adsDisconnect({ platform: 'metaAds' }); } catch (_) {}
+  await loadAds(); // si Shark sigue conectado, se queda en el resumen; si no, vuelve a la conexión inicial
+}
+
+// --------------------------------------------------------------------------
+// Segunda conexión de Meta: Shark (token propio). Sus cuentas aparecen solas en el selector.
+// --------------------------------------------------------------------------
+function toggleSharkForm(show) {
+  const f = $('#adsSharkForm');
+  if (!f) return;
+  f.hidden = (show === undefined) ? !f.hidden : !show;
+}
+
+function renderAdsSharkBox(connections) {
+  const conns = connections || [];
+  const shark = conns.find((c) => c.key === 'metaAdsShark') || { connected: false };
+  const wood = conns.find((c) => c.key === 'metaAds') || { connected: false };
+  const st = $('#adsSharkState'); const disc = $('#adsSharkDiscBtn'); const toggle = $('#adsSharkToggle');
+  if (st) {
+    if (shark.connected) {
+      st.textContent = '✅ Conectada' + (shark.adAccountName ? ' · ' + shark.adAccountName : (shark.adAccountId ? ' · ' + shark.adAccountId : ''));
+      if (disc) disc.hidden = false;
+      if (toggle) toggle.hidden = true;
+      toggleSharkForm(false);
+    } else {
+      st.textContent = 'No conectada';
+      if (disc) disc.hidden = true;
+      if (toggle) toggle.hidden = false;
+    }
+  }
+  // El "Desconectar" de arriba desconecta WoodTools: aclararlo sólo si Shark también está conectada.
+  const head = $('#adsDisconnectBtn');
+  if (head) head.textContent = (shark.connected && wood.connected) ? 'Desconectar WoodTools' : 'Desconectar';
+}
+
+async function adsSharkList() {
+  const token = $('#adsSharkToken').value.trim();
+  const msg = $('#adsSharkMsg'); msg.hidden = true;
+  if (!token) { msg.textContent = 'Pegá el token de Shark primero.'; msg.hidden = false; return; }
+  const btn = $('#adsSharkListBtn'); btn.disabled = true; btn.textContent = 'Buscando…';
+  try {
+    const res = await window.api.adsListAccounts(token);
+    if (!res.ok) { msg.textContent = res.error; msg.hidden = false; return; }
+    const sel = $('#adsSharkAccountSelect');
+    sel.innerHTML = '';
+    for (const a of res.accounts) {
+      const o = document.createElement('option');
+      o.value = a.id;
+      o.textContent = `${a.name} — ${a.id}${a.currency ? ' · ' + a.currency : ''}${a.active ? '' : ' (inactiva)'}`;
+      o.dataset.name = a.name || '';
+      o.dataset.currency = a.currency || '';
+      o.dataset.timezone = a.timezone || '';
+      sel.appendChild(o);
+    }
+    $('#adsSharkAccounts').hidden = false;
+  } catch (e) {
+    msg.textContent = 'No se pudo consultar: ' + ((e && e.message) || e); msg.hidden = false;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Buscar cuentas de Shark';
+  }
+}
+
+async function adsSharkConnect() {
+  const token = $('#adsSharkToken').value.trim();
+  const sel = $('#adsSharkAccountSelect');
+  const opt = sel.options[sel.selectedIndex];
+  const msg = $('#adsSharkMsg'); msg.hidden = true;
+  if (!opt) { msg.textContent = 'Elegí una cuenta de Shark.'; msg.hidden = false; return; }
+  const btn = $('#adsSharkConnectBtn'); btn.disabled = true; btn.textContent = 'Conectando…';
+  try {
+    const res = await window.api.adsConnect({
+      platform: 'metaAdsShark',
+      token,
+      adAccountId: opt.value,
+      adAccountName: opt.dataset.name,
+      currency: opt.dataset.currency,
+      timezone: opt.dataset.timezone,
+    });
+    if (!res.ok) { msg.textContent = res.error; msg.hidden = false; return; }
+    $('#adsSharkToken').value = '';
+    $('#adsSharkAccounts').hidden = true;
+    toggleSharkForm(false);
+    await renderAdsOverview();
+  } catch (e) {
+    msg.textContent = 'No se pudo conectar: ' + ((e && e.message) || e); msg.hidden = false;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Conectar Shark';
+  }
+}
+
+async function adsSharkDisconnect() {
+  try { await window.api.adsDisconnect({ platform: 'metaAdsShark' }); } catch (_) {}
+  await loadAds();
 }
 
 // --------------------------------------------------------------------------

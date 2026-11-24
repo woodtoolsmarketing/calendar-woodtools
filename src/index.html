@@ -441,6 +441,34 @@
               <button type="button" id="adsDisconnectBtn" class="btn-ghost">Desconectar</button>
             </div>
           </div>
+
+          <!-- Segunda conexión de Meta: Shark (login/cuenta aparte, con su propio token) -->
+          <div id="adsSharkBox" class="ads-conn-box">
+            <div class="ads-conn-row">
+              <span class="ads-conn-name">🦈 Shark</span>
+              <span id="adsSharkState" class="ads-conn-state hint">—</span>
+              <span class="ads-conn-spacer"></span>
+              <button type="button" id="adsSharkToggle" class="btn-small">Conectar Shark…</button>
+              <button type="button" id="adsSharkDiscBtn" class="btn-ghost" hidden>Desconectar Shark</button>
+            </div>
+            <div id="adsSharkForm" class="ads-conn-form" hidden>
+              <p class="hint">Token de <strong>«Usuario del sistema»</strong> del Business Manager <strong>de Shark</strong>, con <code>ads_read</code> y <code>ads_management</code> (y permisos de Páginas si vas a promocionar). Se guarda sólo en esta PC. No lo compartas.</p>
+              <div class="field">
+                <label>Token de Shark</label>
+                <input type="password" id="adsSharkToken" autocomplete="off" spellcheck="false" placeholder="Pegá el token del usuario del sistema de Shark" />
+              </div>
+              <button type="button" id="adsSharkListBtn" class="btn-primary">Buscar cuentas de Shark</button>
+              <div id="adsSharkAccounts" class="section-gap" hidden>
+                <div class="field">
+                  <label>Elegí la cuenta de Shark</label>
+                  <select id="adsSharkAccountSelect"></select>
+                </div>
+                <button type="button" id="adsSharkConnectBtn" class="btn-primary">Conectar Shark</button>
+              </div>
+              <div id="adsSharkMsg" class="warn-line" hidden></div>
+            </div>
+          </div>
+
           <div id="adsError" class="warn-line" hidden></div>
           <div id="adsAccountFilter" class="ads-filter" hidden></div>
           <div id="adsPlatformFilter" class="ads-filter">

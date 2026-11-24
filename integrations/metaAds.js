@@ -263,6 +263,20 @@ async function getPagePosts(pageToken, pageId, limit = 25) {
   }));
 }
 
+// Lista las Páginas de Facebook que el token puede administrar. Lo usa "promocionar" cuando una
+// conexión tiene su propia Página (ej. Shark): el token de usuario del sistema con la Página asignada
+// y permisos de páginas devuelve acá su id + un page access token. Best-effort (requiere
+// pages_show_list / pages_read_engagement); si el token no da páginas, devuelve [].
+async function listPages(token) {
+  const json = await graphGet('me/accounts', token, { fields: 'id,name,access_token,tasks', limit: 100 });
+  return (json.data || []).map((p) => ({
+    id: String(p.id),
+    name: p.name || '',
+    accessToken: p.access_token || '',
+    tasks: Array.isArray(p.tasks) ? p.tasks : [],
+  }));
+}
+
 const OPT_GOAL = { OUTCOME_ENGAGEMENT: 'POST_ENGAGEMENT', OUTCOME_TRAFFIC: 'LINK_CLICKS', OUTCOME_AWARENESS: 'REACH' };
 function optimizationGoalFor(objective) { return OPT_GOAL[objective] || 'POST_ENGAGEMENT'; }
 
@@ -564,6 +578,7 @@ module.exports = {
   groupByBreakdown,
   setEntityStatus,
   getPagePosts,
+  listPages,
   createBoost,
   actId,
   // constructores puros (para pruebas)
