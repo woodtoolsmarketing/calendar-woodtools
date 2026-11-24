@@ -25,6 +25,12 @@ function normalize(data) {
     lastError: typeof d.lastError === 'string' ? d.lastError : null,
     days: d.days && typeof d.days === 'object' ? d.days : {},
     campaigns: d.campaigns && typeof d.campaigns === 'object' ? d.campaigns : {},
+    // Nombres locales para mostrar (alias) por campaña: NO cambian el nombre real en Meta
+    aliases: d.aliases && typeof d.aliases === 'object' ? d.aliases : {},
+    // Objetivos/metas locales por campaña (ctr, results, spend, reach, impressions)
+    objectives: d.objectives && typeof d.objectives === 'object' ? d.objectives : {},
+    // Pausas programadas (una vez o semanal). Se ejecutan con la app abierta.
+    schedules: Array.isArray(d.schedules) ? d.schedules : [],
     morningNotifiedDay: typeof d.morningNotifiedDay === 'string' ? d.morningNotifiedDay : null,
   };
 }

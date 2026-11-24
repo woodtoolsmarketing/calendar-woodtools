@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="styles.css" />
   <!-- FullCalendar (bundle global, queda offline tras npm install) -->
   <script src="../node_modules/fullcalendar/index.global.min.js"></script>
+  <script src="../node_modules/chart.js/dist/chart.umd.min.js"></script>
 </head>
 <body>
   <div class="app">
@@ -27,6 +28,15 @@
       </button>
       <button id="btnAds" class="btn-ghost">
         <span>📊 Publicidad (Meta Ads)</span>
+      </button>
+      <button id="btnGads" class="btn-ghost">
+        <span>🔵 Google Ads</span>
+      </button>
+      <button id="btnDash" class="btn-ghost">
+        <span>📊 Tablero (todo)</span>
+      </button>
+      <button id="btnHist" class="btn-ghost">
+        <span>📅 Historial</span>
       </button>
 
       <div class="legend">
@@ -426,6 +436,7 @@
               <small id="adsSyncAt" class="hint">—</small>
             </div>
             <div class="ads-actions">
+              <button type="button" id="adsReportBtn" class="btn-ghost">📈 Informe</button>
               <button type="button" id="adsRefreshBtn" class="btn-ghost">🔄 Actualizar</button>
               <button type="button" id="adsDisconnectBtn" class="btn-ghost">Desconectar</button>
             </div>
@@ -439,9 +450,20 @@
             <button type="button" class="ads-filter-btn" data-plat="instagram">📷 Instagram</button>
           </div>
           <div id="adsTotals" class="ads-totals"></div>
+
+          <div class="section-title section-gap">📊 Embudo: impresiones → consultas → ventas</div>
+          <div id="adsFunnelBox" class="ads-funnel"><p class="hint">Cargando consultas…</p></div>
+
           <div class="section-title section-gap">Campañas</div>
           <div id="adsCampaigns" class="ads-campaigns"></div>
           <p class="hint section-gap">Activar o pausar pide confirmación (gasta/deja de gastar plata real).</p>
+
+          <div class="section-title section-gap">⏰ Pausas programadas</div>
+          <div id="adsSchedBox" class="ads-sched">
+            <div class="ads-boost-summary">Programá pausar una campaña (o todas las activas) a una hora: una sola vez o cada semana. <strong>La PC tiene que estar encendida y la app abierta</strong> a esa hora para que se ejecute. Pausar no gasta plata.</div>
+            <button type="button" id="adsSchedAddBtn" class="btn-small">＋ Programar una pausa…</button>
+            <div id="adsSchedList" class="ads-sched-list"></div>
+          </div>
 
           <div class="section-title section-gap">Promocionar una publicación</div>
           <div id="adsBoostBox" class="ads-boost">
@@ -490,6 +512,295 @@
         <div class="spacer"></div>
         <button type="button" id="adsConfirmCancel" class="btn-ghost">Cancelar</button>
         <button type="button" id="adsConfirmOk" class="btn-primary">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== RENOMBRAR CAMPAÑA (alias local) ============== -->
+  <div id="adsAliasModal" class="modal-backdrop" hidden>
+    <div class="modal modal-small">
+      <div class="modal-head">
+        <h2>Renombrar para mostrar</h2>
+        <button id="adsAliasX" class="icon-btn" title="Cerrar">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="hint" id="adsAliasReal"></p>
+        <div class="field">
+          <label>Nombre para mostrar en el calendario</label>
+          <input type="text" id="adsAliasInput" maxlength="80" autocomplete="off" placeholder="Ej: Promo sillas septiembre" />
+        </div>
+        <p class="hint">Solo cambia cómo lo ves acá. El nombre en Meta Ads/Instagram queda igual.</p>
+      </div>
+      <div class="modal-foot">
+        <button type="button" id="adsAliasClear" class="btn-ghost">Quitar alias</button>
+        <div class="spacer"></div>
+        <button type="button" id="adsAliasCancel" class="btn-ghost">Cancelar</button>
+        <button type="button" id="adsAliasSave" class="btn-primary">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== OBJETIVOS DE CAMPAÑA ============== -->
+  <div id="adsObjModal" class="modal-backdrop" hidden>
+    <div class="modal modal-small">
+      <div class="modal-head">
+        <h2>🎯 Objetivos de la campaña</h2>
+        <button id="adsObjX" class="icon-btn" title="Cerrar">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="hint" id="adsObjCamp"></p>
+        <p class="hint">Dejá en blanco los que no quieras fijar. Se comparan con los <strong>últimos 30 días</strong>.</p>
+        <div class="field-row">
+          <div class="field"><label>Resultados (meta)</label><input type="number" id="adsObjResults" min="0" step="1" autocomplete="off" placeholder="ej: 50" /></div>
+          <div class="field"><label>CTR objetivo (%)</label><input type="number" id="adsObjCtr" min="0" step="0.1" autocomplete="off" placeholder="ej: 2" /></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Gasto tope (<span id="adsObjCur">ARS</span>)</label><input type="number" id="adsObjSpend" min="0" step="1" autocomplete="off" placeholder="ej: 10000" /></div>
+          <div class="field"><label>Alcance (meta)</label><input type="number" id="adsObjReach" min="0" step="1" autocomplete="off" placeholder="ej: 20000" /></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Impresiones (meta)</label><input type="number" id="adsObjImpr" min="0" step="1" autocomplete="off" placeholder="ej: 100000" /></div>
+          <div class="field"></div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" id="adsObjClear" class="btn-ghost">Borrar objetivos</button>
+        <div class="spacer"></div>
+        <button type="button" id="adsObjCancel" class="btn-ghost">Cancelar</button>
+        <button type="button" id="adsObjSave" class="btn-primary">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== PROGRAMAR PAUSA ============== -->
+  <div id="adsSchedModal" class="modal-backdrop" hidden>
+    <div class="modal modal-small">
+      <div class="modal-head">
+        <h2>⏰ Programar una pausa</h2>
+        <button id="adsSchedX" class="icon-btn" title="Cerrar">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label>¿Qué pausar?</label>
+          <select id="adsSchedTarget">
+            <option value="ALL">Todas las campañas activas</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>¿Cuándo?</label>
+          <div class="ads-sched-radios">
+            <label class="radio-inline"><input type="radio" name="adsSchedType" value="once" checked /> Una sola vez</label>
+            <label class="radio-inline"><input type="radio" name="adsSchedType" value="weekly" /> Cada semana</label>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field" id="adsSchedOnceRow">
+            <label>Fecha</label>
+            <input type="date" id="adsSchedDate" />
+          </div>
+          <div class="field" id="adsSchedWeeklyRow" hidden>
+            <label>Día de la semana</label>
+            <select id="adsSchedDow">
+              <option value="1">Lunes</option>
+              <option value="2">Martes</option>
+              <option value="3">Miércoles</option>
+              <option value="4">Jueves</option>
+              <option value="5">Viernes</option>
+              <option value="6">Sábado</option>
+              <option value="0">Domingo</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Hora</label>
+            <input type="time" id="adsSchedTime" value="23:59" />
+          </div>
+        </div>
+        <p class="hint">Pausar <strong>no gasta plata</strong> (solo detiene la campaña). Reactivarla después es manual, desde «Campañas».</p>
+        <div id="adsSchedMsg" class="warn-line" hidden></div>
+      </div>
+      <div class="modal-foot">
+        <div class="spacer"></div>
+        <button type="button" id="adsSchedCancel" class="btn-ghost">Cancelar</button>
+        <button type="button" id="adsSchedSave" class="btn-primary">Programar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== INFORME (demografía + rendimiento) ============== -->
+  <div id="adsReportModal" class="modal-backdrop" hidden>
+    <div class="modal modal-wide">
+      <div class="modal-head">
+        <h2>📈 Informe de campañas</h2>
+        <button id="adsReportX" class="icon-btn" title="Cerrar">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="hint" id="adsReportRange"></p>
+        <div id="adsReportMsg" class="hint">Cargando informe…</div>
+        <div id="adsReportContent" hidden>
+          <div id="adsReportStats" class="ads-report-stats"></div>
+          <div class="ads-report-grid">
+            <div class="ads-chart-box ads-chart-wide">
+              <div class="ads-chart-title">Rendimiento diario (últimos 30 días)</div>
+              <canvas id="adsChartTrend" height="150"></canvas>
+            </div>
+            <div class="ads-chart-box">
+              <div class="ads-chart-title">Género (impresiones)</div>
+              <canvas id="adsChartGender" height="200"></canvas>
+              <div class="ads-dist" id="adsDistGender"></div>
+            </div>
+            <div class="ads-chart-box">
+              <div class="ads-chart-title">Edad: impresiones y CTR</div>
+              <canvas id="adsChartAge" height="200"></canvas>
+              <div class="ads-dist" id="adsDistAge"></div>
+            </div>
+            <div class="ads-chart-box ads-chart-wide">
+              <div class="ads-chart-title">Ubicación — top provincias (impresiones)</div>
+              <canvas id="adsChartRegion" height="170"></canvas>
+              <div class="ads-dist" id="adsDistRegion"></div>
+            </div>
+          </div>
+          <p class="hint">Edad, género y ubicación los informa Meta según a quién se mostraron los anuncios (últimos 30 días, todas las campañas de la cuenta elegida).</p>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <div class="spacer"></div>
+        <button type="button" id="adsReportClose" class="btn-primary">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== GOOGLE ADS ============== -->
+  <div id="gadsModal" class="modal-backdrop" hidden>
+    <div class="modal modal-wide">
+      <div class="modal-head">
+        <h2>🔵 Google Ads — Rendimiento de campañas</h2>
+        <button id="gadsX" class="icon-btn" title="Cerrar">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="gadsLoading" class="hint">Cargando…</div>
+
+        <!-- No conectado -->
+        <div id="gadsSetup" hidden>
+          <p>Conectá tu cuenta de Google Ads para ver las campañas y pausar/activar desde acá. Usa el mismo inicio de sesión de Google que YouTube (reutiliza ese cliente), sumando el permiso de Google Ads.</p>
+          <div class="field">
+            <label>Customer ID de Google Ads</label>
+            <input type="text" id="gadsCustomerId" placeholder="123-456-7890" value="630-936-0690" autocomplete="off" />
+          </div>
+          <p class="hint">Tu proyecto de Google Cloud necesita acceso <strong>Explorer</strong> o Basic (ya lo tenés). Si YouTube no está conectado, conectalo primero en ⚙ Conexiones (de ahí sale el cliente de Google).</p>
+          <button type="button" id="gadsConnectBtn" class="btn-primary">Conectar Google Ads</button>
+          <div id="gadsSetupMsg" class="warn-line" hidden></div>
+        </div>
+
+        <!-- Conectado -->
+        <div id="gadsOverview" hidden>
+          <div class="status-head">
+            <div>
+              <div class="section-title" id="gadsAccountName">Cuenta</div>
+              <small class="hint">Google Ads · últimos 30 días</small>
+            </div>
+            <div class="ads-actions">
+              <button type="button" id="gadsRefreshBtn" class="btn-ghost">🔄 Actualizar</button>
+              <button type="button" id="gadsDisconnectBtn" class="btn-ghost">Desconectar</button>
+            </div>
+          </div>
+          <div id="gadsError" class="warn-line" hidden></div>
+          <div id="gadsTotals" class="ads-totals"></div>
+          <div class="section-title section-gap">Campañas</div>
+          <div id="gadsCampaigns" class="ads-campaigns"></div>
+          <p class="hint section-gap">Pausar o activar pide confirmación (gasta/deja de gastar plata real).</p>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <div class="spacer"></div>
+        <button type="button" id="gadsClose" class="btn-primary">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== TABLERO UNIFICADO ============== -->
+  <div id="dashModal" class="modal-backdrop" hidden>
+    <div class="modal modal-wide">
+      <div class="modal-head">
+        <h2>📊 Tablero — Todo tu marketing (últimos 30 días)</h2>
+        <button id="dashX" class="icon-btn" title="Cerrar">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="dashLoading" class="hint">Cargando datos de los canales…</div>
+        <div id="dashContent" hidden>
+          <div id="dashStats" class="ads-report-stats"></div>
+          <div class="ads-report-grid">
+            <div class="ads-chart-box"><div class="ads-chart-title">Gasto por canal</div><canvas id="dashChartSpend" height="190"></canvas></div>
+            <div class="ads-chart-box"><div class="ads-chart-title">Impresiones por canal</div><canvas id="dashChartImpr" height="190"></canvas></div>
+          </div>
+          <div class="section-title section-gap">Por canal</div>
+          <div id="dashChannels" class="ads-campaigns"></div>
+          <div class="section-title section-gap">Embudo total: impresiones → consultas → ventas</div>
+          <div id="dashFunnel"></div>
+          <p class="hint" id="dashNote"></p>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <div class="spacer"></div>
+        <button type="button" id="dashRefresh" class="btn-ghost">🔄 Actualizar</button>
+        <button type="button" id="dashClose" class="btn-primary">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== MODAL HISTORIAL / COMPARATIVA ===================== -->
+  <div id="histModal" class="modal-backdrop" hidden>
+    <div class="modal modal-wide">
+      <div class="modal-head">
+        <h2>📅 Historial — Comparativa por período</h2>
+        <button id="histX" class="icon-btn" title="Cerrar">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="histPeriods" class="hist-periods">
+          <button class="hist-period-btn" data-period="anio">Año</button>
+          <button class="hist-period-btn" data-period="semestre">Medio año</button>
+          <button class="hist-period-btn" data-period="trimestre">Trimestre</button>
+          <button class="hist-period-btn active" data-period="mes">Mes</button>
+          <button class="hist-period-btn" data-period="15dias">Últimos 15 días</button>
+          <button class="hist-period-btn" data-period="semana">Última semana</button>
+          <button class="hist-period-btn" data-period="custom">Personalizado</button>
+        </div>
+        <div id="histCustom" class="hist-custom" hidden>
+          <label>Desde <input type="date" id="histFrom"></label>
+          <label>Hasta <input type="date" id="histTo"></label>
+          <button type="button" id="histApplyCustom" class="btn-small">Aplicar</button>
+        </div>
+
+        <div id="histLoading" class="hint">Cargando historial…</div>
+        <div id="histEmpty" class="hist-empty" hidden></div>
+        <div id="histWarn" class="hist-warn" hidden></div>
+        <div id="histContent" hidden>
+          <div id="histRangeLine" class="hist-range-line"></div>
+          <div id="histStats" class="ads-report-stats"></div>
+
+          <div class="section-title section-gap">Tendencia</div>
+          <div id="histMetricTabs" class="hist-metric-tabs">
+            <button type="button" class="hist-metric-btn active" data-metric="gasto">Gasto</button>
+            <button type="button" class="hist-metric-btn" data-metric="impresiones">Impresiones</button>
+            <button type="button" class="hist-metric-btn" data-metric="clics">Clics</button>
+            <button type="button" class="hist-metric-btn" data-metric="consultas">Consultas</button>
+          </div>
+          <div class="ads-chart-box ads-chart-wide"><canvas id="histChart" height="150"></canvas></div>
+
+          <div class="section-title section-gap">Detalle por métrica (actual vs anterior)</div>
+          <div id="histTable" class="hist-table"></div>
+
+          <div class="section-title section-gap">Por canal</div>
+          <div id="histChannels" class="ads-campaigns"></div>
+
+          <p class="hint" id="histNote"></p>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" id="histOpenSheet" class="btn-ghost" title="Abrir la hoja de cálculo (.csv) en Excel / Google Sheets">📄 Abrir hoja</button>
+        <button type="button" id="histRebuild" class="btn-ghost" title="Traer de Meta y Google el historial de meses anteriores">⟲ Reconstruir</button>
+        <div class="spacer"></div>
+        <button type="button" id="histUpdate" class="btn-ghost">🔄 Actualizar</button>
+        <button type="button" id="histClose" class="btn-primary">Cerrar</button>
       </div>
     </div>
   </div>

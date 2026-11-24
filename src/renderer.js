@@ -2172,6 +2172,32 @@ function wire() {
 
   // Publicidad (Meta/Instagram Ads)
   $('#btnAds').onclick = () => openAds();
+  // Google Ads
+  $('#btnGads').onclick = () => openGads();
+  $('#gadsX').onclick = closeGads;
+  $('#gadsClose').onclick = closeGads;
+  closeOnBackdrop('#gadsModal', closeGads);
+  $('#gadsConnectBtn').onclick = connectGads;
+  $('#gadsRefreshBtn').onclick = () => renderGadsOverview();
+  $('#gadsDisconnectBtn').onclick = disconnectGads;
+  $('#gadsCampaigns').addEventListener('click', onGadsCampaignClick);
+  // Tablero unificado
+  $('#btnDash').onclick = () => openDash();
+  $('#dashX').onclick = closeDash;
+  $('#dashClose').onclick = closeDash;
+  $('#dashRefresh').onclick = () => renderDash();
+  closeOnBackdrop('#dashModal', closeDash);
+  // Historial / Comparativa
+  $('#btnHist').onclick = () => openHist();
+  $('#histX').onclick = closeHist;
+  $('#histClose').onclick = closeHist;
+  closeOnBackdrop('#histModal', closeHist);
+  $('#histUpdate').onclick = () => histUpdateNow();
+  $('#histRebuild').onclick = () => histRebuildNow();
+  $('#histOpenSheet').onclick = () => histOpenSheet();
+  $('#histApplyCustom').onclick = () => { histState.from = $('#histFrom').value; histState.to = $('#histTo').value; renderHist(); };
+  $('#histPeriods').addEventListener('click', onHistPeriodClick);
+  $('#histMetricTabs').addEventListener('click', onHistMetricClick);
   $('#adsClose').onclick = closeAds;
   closeOnBackdrop('#adsModal', closeAds);
   $('#adsListBtn').onclick = () => adsListAccounts();
@@ -2200,6 +2226,32 @@ function wire() {
     adsAccountFilter = b.dataset.acc || 'all';
     applyAdsFilter();
   });
+  // Renombrar campaña (alias local)
+  $('#adsAliasX').onclick = closeAliasEditor;
+  $('#adsAliasCancel').onclick = closeAliasEditor;
+  $('#adsAliasSave').onclick = () => saveAlias($('#adsAliasInput').value);
+  $('#adsAliasClear').onclick = () => saveAlias('');
+  closeOnBackdrop('#adsAliasModal', closeAliasEditor);
+  $('#adsAliasInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); saveAlias($('#adsAliasInput').value); } });
+  // Objetivos de campaña (metas locales)
+  $('#adsObjX').onclick = closeObjEditor;
+  $('#adsObjCancel').onclick = closeObjEditor;
+  $('#adsObjSave').onclick = () => saveObjectives(false);
+  $('#adsObjClear').onclick = () => saveObjectives(true);
+  closeOnBackdrop('#adsObjModal', closeObjEditor);
+  // Pausas programadas
+  $('#adsSchedAddBtn').onclick = openSchedEditor;
+  $('#adsSchedX').onclick = closeSchedEditor;
+  $('#adsSchedCancel').onclick = closeSchedEditor;
+  $('#adsSchedSave').onclick = saveSchedule;
+  closeOnBackdrop('#adsSchedModal', closeSchedEditor);
+  $('#adsSchedList').addEventListener('click', onAdsSchedListClick);
+  $$('input[name="adsSchedType"]').forEach((r) => { r.onchange = updateSchedType; });
+  // Informe (demografía + gráficos)
+  $('#adsReportBtn').onclick = openReport;
+  $('#adsReportX').onclick = closeReport;
+  $('#adsReportClose').onclick = closeReport;
+  closeOnBackdrop('#adsReportModal', closeReport);
   if (typeof window.api.onOpenAds === 'function') window.api.onOpenAds(() => openAds());
   if (typeof window.api.onAdsChanged === 'function') window.api.onAdsChanged(() => { if (!$('#adsModal').hidden && !$('#adsOverview').hidden) renderAdsOverview(); });
 
@@ -2229,8 +2281,15 @@ function wire() {
 
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
-    if (!$('#adsConfirmModal').hidden) adsConfirmClose(false);
+    if (!$('#adsAliasModal').hidden) closeAliasEditor();
+    else if (!$('#adsObjModal').hidden) closeObjEditor();
+    else if (!$('#adsReportModal').hidden) closeReport();
+    else if (!$('#adsSchedModal').hidden) closeSchedEditor();
+    else if (!$('#adsConfirmModal').hidden) adsConfirmClose(false);
     else if (!$('#resultModal').hidden) closeResults();
+    else if (!$('#gadsModal').hidden) closeGads();
+    else if (!$('#dashModal').hidden) closeDash();
+    else if (!$('#histModal').hidden) closeHist();
     else if (!$('#adsModal').hidden) closeAds();
     else if (!$('#connModal').hidden) closeConnections();
     else if (!$('#modal').hidden) closeForm();
@@ -2275,6 +2334,424 @@ function adsShowError(msg) {
   const err = $('#adsError');
   err.textContent = '⚠️ ' + msg;
   err.hidden = false;
+}
+
+// ====================== GOOGLE ADS ======================
+// Panel propio (stateless: pide los datos en vivo). Reutiliza adsConfirm/adsMoney/adsInt/escapeHtml.
+let gadsCampaignsById = {};
+const GADS_CUR = 'ARS'; // moneda de la cuenta (la API devuelve costo en micros de esa moneda)
+
+function openGads() { $('#gadsModal').hidden = false; loadGads(); }
+function closeGads() { $('#gadsModal').hidden = true; }
+function setGadsView(v) {
+  $('#gadsLoading').hidden = v !== 'loading';
+  $('#gadsSetup').hidden = v !== 'setup';
+  $('#gadsOverview').hidden = v !== 'overview';
+}
+async function loadGads() {
+  setGadsView('loading');
+  let st;
+  try { st = await window.api.gadsStatus(); } catch (_) { st = null; }
+  if ($('#gadsModal').hidden) return;
+  if (st && st.connected) { await renderGadsOverview(); }
+  else { $('#gadsSetupMsg').hidden = true; setGadsView('setup'); }
+}
+async function connectGads() {
+  const btn = $('#gadsConnectBtn'); const msg = $('#gadsSetupMsg');
+  msg.hidden = true;
+  const customerId = $('#gadsCustomerId').value.trim();
+  if (!customerId) { msg.textContent = 'Poné el Customer ID.'; msg.hidden = false; return; }
+  btn.disabled = true; btn.textContent = 'Abriendo Google…';
+  try {
+    const r = await window.api.gadsConnect({ customerId });
+    if (r && r.ok) { await loadGads(); }
+    else { msg.textContent = (r && r.error) || 'No se pudo conectar.'; msg.hidden = false; }
+  } catch (_) { msg.textContent = 'No se pudo conectar.'; msg.hidden = false; }
+  finally { btn.disabled = false; btn.textContent = 'Conectar Google Ads'; }
+}
+async function disconnectGads() {
+  const ok = await adsConfirm({ title: 'Desconectar Google Ads', message: '¿Desconectar Google Ads de la app? Podés reconectar cuando quieras.', okLabel: 'Desconectar', danger: true });
+  if (!ok) return;
+  try { await window.api.gadsDisconnect(); } catch (_) {}
+  loadGads();
+}
+async function renderGadsOverview() {
+  setGadsView('loading');
+  let ov;
+  try { ov = await window.api.gadsOverview(); } catch (_) { ov = null; }
+  if ($('#gadsModal').hidden) return;
+  if (!ov || !ov.ok) {
+    if (ov && ov.connected === false) { setGadsView('setup'); return; }
+    setGadsView('overview');
+    $('#gadsError').textContent = '⚠️ ' + ((ov && ov.error) || 'No se pudo leer Google Ads.');
+    $('#gadsError').hidden = false;
+    $('#gadsTotals').innerHTML = ''; $('#gadsCampaigns').innerHTML = '';
+    return;
+  }
+  setGadsView('overview');
+  $('#gadsError').hidden = true;
+  $('#gadsAccountName').textContent = 'Cuenta ' + (ov.customerId || '');
+  const t = ov.totals || {};
+  const impr = Number(t.impressions) || 0, clicks = Number(t.clicks) || 0;
+  const ctr = impr ? (clicks / impr) * 100 : 0;
+  $('#gadsTotals').innerHTML = `<div class="ads-card">
+    <div class="ads-card-label">Últimos 30 días</div>
+    <div class="ads-card-spend">${adsMoney(t.cost, GADS_CUR)}</div>
+    <div class="ads-card-sub">${adsInt(impr)} impres. · ${adsInt(clicks)} clics · CTR ${ctr.toFixed(1)}%</div>
+    <div class="ads-card-sub">${adsInt(t.conversions)} conversiones</div>
+  </div>`;
+  gadsCampaignsById = {};
+  for (const c of (ov.campaigns || [])) gadsCampaignsById[c.id] = c;
+  const camps = ov.campaigns || [];
+  $('#gadsCampaigns').innerHTML = camps.length
+    ? camps.map((c) => gadsCampaignRow(c)).join('')
+    : '<p class="hint">No hay campañas con datos en los últimos 30 días.</p>';
+}
+function gadsStatusLabel(s) { const m = { ENABLED: 'Activa', PAUSED: 'Pausada', REMOVED: 'Eliminada' }; return m[s] || s || '—'; }
+function gadsCampaignRow(c) {
+  const badge = c.running
+    ? '<span class="ads-badge on">● Activa</span>'
+    : '<span class="ads-badge off">⏸ ' + escapeHtml(gadsStatusLabel(c.status)) + '</span>';
+  const btn = c.status === 'ENABLED'
+    ? `<button type="button" class="btn-small ads-act" data-gads-action="pause" data-camp-id="${escapeHtml(c.id)}">⏸ Pausar</button>`
+    : (c.status === 'PAUSED' ? `<button type="button" class="btn-small ads-act" data-gads-action="activate" data-camp-id="${escapeHtml(c.id)}">▶ Activar</button>` : '');
+  const ctr = (Number(c.impressions) ? (c.clicks / c.impressions) * 100 : 0).toFixed(1);
+  return `<div class="ads-camp${c.running ? ' on' : ''}">
+    <div class="ads-camp-head">
+      <span class="ads-camp-name-wrap"><span class="ads-camp-name">${escapeHtml(c.name || '(sin nombre)')}</span></span>
+      <span class="ads-camp-right">${badge}${btn}</span>
+    </div>
+    <div class="ads-camp-metrics">
+      <span>30 días: ${adsMoney(c.cost, GADS_CUR)} · ${adsInt(c.impressions)} impres. · ${adsInt(c.clicks)} clics · CTR ${ctr}%</span>
+      <span>${adsInt(c.conversions)} conversiones${c.avgCpc ? ' · CPC ' + adsMoney(c.avgCpc, GADS_CUR) : ''}</span>
+    </div>
+  </div>`;
+}
+async function onGadsCampaignClick(e) {
+  const btn = e.target.closest('[data-gads-action]');
+  if (!btn) return;
+  const id = btn.dataset.campId;
+  const c = gadsCampaignsById[id];
+  if (!c) return;
+  const toActive = btn.dataset.gadsAction === 'activate';
+  const ok = await adsConfirm({
+    title: toActive ? 'Activar campaña (Google Ads)' : 'Pausar campaña (Google Ads)',
+    message: toActive
+      ? `Vas a ACTIVAR «${c.name}» en Google Ads.\n\nVa a empezar a gastar plata real. ¿Confirmás?`
+      : `Vas a PAUSAR «${c.name}» en Google Ads.\n\nDeja de mostrarse y de gastar. ¿Confirmás?`,
+    okLabel: toActive ? 'Sí, activar' : 'Sí, pausar',
+    danger: toActive,
+  });
+  if (!ok) return;
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    const r = await window.api.gadsSetStatus({ campaignId: id, status: toActive ? 'ENABLED' : 'PAUSED' });
+    if (r && r.ok) { await renderGadsOverview(); }
+    else {
+      $('#gadsError').textContent = '⚠️ ' + ((r && r.error) || 'No se pudo cambiar la campaña.');
+      $('#gadsError').hidden = false;
+      btn.disabled = false; btn.textContent = toActive ? '▶ Activar' : '⏸ Pausar';
+    }
+  } catch (_) { btn.disabled = false; btn.textContent = toActive ? '▶ Activar' : '⏸ Pausar'; }
+}
+
+// ====================== TABLERO UNIFICADO (Meta + Google Ads + consultas/ventas) ======================
+let dashCharts = [];
+function destroyDashCharts() { for (const c of dashCharts) { try { c.destroy(); } catch (_) {} } dashCharts = []; }
+function openDash() { $('#dashModal').hidden = false; renderDash(); }
+function closeDash() { destroyDashCharts(); $('#dashModal').hidden = true; }
+async function renderDash() {
+  $('#dashContent').hidden = true;
+  $('#dashLoading').hidden = false; $('#dashLoading').textContent = 'Cargando datos de los canales…';
+  const [meta, google, con] = await Promise.all([
+    window.api.adsOverview().catch(() => null),
+    window.api.gadsOverview().catch(() => null),
+    window.api.adsGetConsultas().catch(() => null),
+  ]);
+  if ($('#dashModal').hidden) return;
+  const cur = 'ARS';
+  const m = (meta && meta.connected && meta.last30) ? meta.last30 : null;
+  const g = (google && google.ok && google.totals) ? google.totals : null;
+  const channels = [
+    { name: 'Meta Ads', color: '#4c8bf5', connected: !!m, spend: m ? Number(m.spend) || 0 : 0, impr: m ? Number(m.impressions) || 0 : 0, clicks: m ? Number(m.clicks) || 0 : 0 },
+    { name: 'Google Ads', color: '#EA4335', connected: !!g, spend: g ? Number(g.cost) || 0 : 0, impr: g ? Number(g.impressions) || 0 : 0, clicks: g ? Number(g.clicks) || 0 : 0 },
+  ];
+  for (const ch of channels) ch.ctr = ch.impr ? (ch.clicks / ch.impr) * 100 : 0;
+  const totSpend = channels.reduce((s, c) => s + c.spend, 0);
+  const totImpr = channels.reduce((s, c) => s + c.impr, 0);
+  const totClicks = channels.reduce((s, c) => s + c.clicks, 0);
+  const totCtr = totImpr ? (totClicks / totImpr) * 100 : 0;
+  const f = (con && con.ok && con.last30) ? con.last30 : null;
+  const consultas = f ? Number(f.consultas) || 0 : 0;
+  const ventas = f ? Number(f.ventas) || 0 : 0;
+  const cvr = f ? (f.cvr != null ? Number(f.cvr) : (consultas ? (ventas / consultas) * 100 : 0)) : 0;
+
+  $('#dashStats').innerHTML = [
+    adsStatCard('Gasto total', adsMoney(totSpend, cur)),
+    adsStatCard('Impresiones', adsInt(totImpr)),
+    adsStatCard('Clics', adsInt(totClicks)),
+    adsStatCard('CTR', totCtr.toFixed(1) + '%'),
+    adsStatCard('Consultas', f ? adsInt(consultas) : '—'),
+    adsStatCard('Ventas', f ? adsInt(ventas) : '—'),
+    adsStatCard('CVR', f ? cvr.toFixed(1) + '%' : '—'),
+  ].join('');
+
+  $('#dashChannels').innerHTML = channels.map((ch) => `<div class="ads-camp">
+    <div class="ads-camp-head">
+      <span class="ads-camp-name">${escapeHtml(ch.name)}${ch.connected ? '' : ' <small class="hint">(no conectado)</small>'}</span>
+      <span class="ads-camp-right"><strong>${adsMoney(ch.spend, cur)}</strong></span>
+    </div>
+    <div class="ads-camp-metrics">
+      <span>${adsInt(ch.impr)} impres. · ${adsInt(ch.clicks)} clics · CTR ${ch.ctr.toFixed(1)}%</span>
+      <span>${totSpend ? (ch.spend / totSpend * 100).toFixed(0) + '% del gasto' : ''}</span>
+    </div>
+  </div>`).join('');
+
+  const imprPorConsulta = consultas ? Math.round(totImpr / consultas) : 0;
+  const costoConsulta = consultas ? totSpend / consultas : 0;
+  const costoVenta = ventas ? totSpend / ventas : 0;
+  $('#dashFunnel').innerHTML = f ? `<div class="ads-funnel-card">
+    <div class="ads-funnel-step"><span class="ads-funnel-k">👁️ Impresiones (Meta + Google)</span><span class="ads-funnel-v">${adsInt(totImpr)}</span></div>
+    <div class="ads-funnel-link">${consultas ? '1 consulta cada <strong>' + adsInt(imprPorConsulta) + '</strong> impresiones' : 'sin consultas'}</div>
+    <div class="ads-funnel-step"><span class="ads-funnel-k">💬 Consultas</span><span class="ads-funnel-v">${adsInt(consultas)}</span></div>
+    <div class="ads-funnel-link">conversión (CVR) <strong>${cvr.toFixed(1)}%</strong></div>
+    <div class="ads-funnel-step"><span class="ads-funnel-k">🛒 Ventas</span><span class="ads-funnel-v">${adsInt(ventas)}</span></div>
+    <div class="ads-funnel-costs">Costo por consulta: <strong>${consultas ? adsMoney(costoConsulta, cur) : '—'}</strong> · por venta: <strong>${ventas ? adsMoney(costoVenta, cur) : '—'}</strong> <small>(gasto total de ambos canales)</small></div>
+  </div>` : '<p class="hint">Abrí el Contador de Consultas en esta PC para ver el embudo con tus consultas y ventas.</p>';
+
+  const notConn = channels.filter((c) => !c.connected).map((c) => c.name);
+  $('#dashNote').textContent = (notConn.length ? '⚠️ ' + notConn.join(' y ') + ' no está(n) conectado(s): el total no los incluye. ' : '')
+    + 'Las consultas de WhatsApp no se separan por canal: el embudo las toma del total de la cuenta.';
+
+  $('#dashLoading').hidden = true;
+  $('#dashContent').hidden = false;
+  renderDashCharts(channels);
+}
+function renderDashCharts(channels) {
+  destroyDashCharts();
+  if (typeof Chart === 'undefined') return;
+  try { Chart.defaults.color = '#9aa3b2'; } catch (_) {}
+  const labels = channels.map((c) => c.name);
+  const colors = channels.map((c) => c.color);
+  dashCharts.push(new Chart($('#dashChartSpend'), { type: 'bar', data: { labels, datasets: [{ data: channels.map((c) => c.spend), backgroundColor: colors, borderRadius: 4 }] }, options: adsChartOpts() }));
+  dashCharts.push(new Chart($('#dashChartImpr'), { type: 'bar', data: { labels, datasets: [{ data: channels.map((c) => c.impr), backgroundColor: colors, borderRadius: 4 }] }, options: adsChartOpts() }));
+}
+
+// ====================== HISTORIAL / COMPARATIVA ======================
+// Lee el historial (hoja de cálculo en userData) y compara período vs período anterior.
+// Reutiliza adsStatCard/adsMoney/adsInt/adsChartOpts/adsConfirm/escapeHtml.
+let histCharts = [];
+function destroyHistCharts() { for (const c of histCharts) { try { c.destroy(); } catch (_) {} } histCharts = []; }
+const histState = { period: 'mes', metric: 'gasto', from: '', to: '', data: null };
+const HIST_METRIC_NAME = { gasto: 'del gasto', impresiones: 'de impresiones', clics: 'de clics', consultas: 'de consultas' };
+
+function openHist() { $('#histModal').hidden = false; histShowSaveWarning(false); renderHist(); }
+function closeHist() { destroyHistCharts(); $('#histModal').hidden = true; }
+function histShowSaveWarning(show) {
+  const w = $('#histWarn');
+  if (show) { w.innerHTML = '⚠️ No se pudo guardar el historial. Si tenés la hoja abierta en Excel, <strong>cerrala</strong> y reintentá.'; w.hidden = false; }
+  else { w.hidden = true; }
+}
+
+function onHistPeriodClick(e) {
+  const b = e.target.closest('.hist-period-btn'); if (!b) return;
+  histState.period = b.dataset.period || 'mes';
+  $$('#histPeriods .hist-period-btn').forEach((x) => x.classList.toggle('active', x === b));
+  const isCustom = histState.period === 'custom';
+  $('#histCustom').hidden = !isCustom;
+  if (isCustom) {
+    if (!$('#histFrom').value || !$('#histTo').value) {
+      const t = new Date();
+      $('#histFrom').value = toDateInput(new Date(t.getTime() - 29 * 86400000));
+      $('#histTo').value = toDateInput(t);
+    }
+    histState.from = $('#histFrom').value; histState.to = $('#histTo').value;
+  }
+  renderHist();
+}
+function onHistMetricClick(e) {
+  const b = e.target.closest('.hist-metric-btn'); if (!b) return;
+  histState.metric = b.dataset.metric || 'gasto';
+  $$('#histMetricTabs .hist-metric-btn').forEach((x) => x.classList.toggle('active', x === b));
+  if (histState.data) renderHistChart(histState.data);
+}
+
+async function renderHist() {
+  $('#histContent').hidden = true;
+  $('#histEmpty').hidden = true;
+  $('#histLoading').hidden = false;
+  destroyHistCharts();
+  const payload = { period: histState.period };
+  if (histState.period === 'custom') { payload.from = histState.from; payload.to = histState.to; }
+  let res;
+  try { res = await window.api.histComparison(payload); } catch (e) { res = { ok: false, error: String((e && e.message) || e) }; }
+  if ($('#histModal').hidden) return;
+  $('#histLoading').hidden = true;
+  if (!res || !res.ok) {
+    $('#histEmpty').hidden = false;
+    $('#histEmpty').innerHTML = '⚠️ ' + escapeHtml((res && res.error) || 'No se pudo armar la comparativa.');
+    return;
+  }
+  histState.data = res;
+  if (!res.coverage || !res.coverage.rows) {
+    $('#histEmpty').hidden = false;
+    $('#histEmpty').innerHTML = 'Todavía no hay historial guardado. Tocá <strong>⟲ Reconstruir</strong> para traer de Meta y Google los últimos meses, o <strong>🔄 Actualizar</strong> para empezar a registrar desde hoy.';
+    return;
+  }
+  renderHistHeader(res);
+  renderHistStats(res);
+  renderHistTable(res);
+  renderHistChannels(res);
+  renderHistNote(res);
+  $('#histContent').hidden = false;
+  renderHistChart(res);
+}
+
+function histFmtDate(ymd) { const p = String(ymd || '').split('-'); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : (ymd || ''); }
+
+function renderHistHeader(res) {
+  const a = res.windows.actual, b = res.windows.anterior;
+  $('#histRangeLine').innerHTML = `<span class="hist-range-badge hist-range-actual">${escapeHtml(res.label)} actual: ${histFmtDate(a.from)} → ${histFmtDate(a.to)} <small>(${a.days} días)</small></span>`
+    + `<span class="hist-range-vs">vs</span>`
+    + `<span class="hist-range-badge hist-range-prev">anterior: ${histFmtDate(b.from)} → ${histFmtDate(b.to)} <small>(${b.days} días)</small></span>`;
+}
+
+function histDeltaChip(d, dir) {
+  if (!d || d.pct == null) return '<span class="hist-chip hist-chip-flat" title="sin dato comparable">s/d</span>';
+  const arrow = d.pct > 0 ? '▲' : (d.pct < 0 ? '▼' : '=');
+  let cls = 'hist-chip-neutral';
+  if (d.pct !== 0 && dir !== 'neutral') cls = ((dir === 'down') ? d.pct < 0 : d.pct > 0) ? 'hist-chip-up' : 'hist-chip-down';
+  return `<span class="hist-chip ${cls}">${arrow} ${Math.abs(d.pct).toFixed(1)}%</span>`;
+}
+function histStatCard(label, valStr, d, dir) {
+  return `<div class="ads-stat"><div class="ads-stat-v">${valStr}</div><div class="ads-stat-l">${escapeHtml(label)}</div>${histDeltaChip(d, dir)}</div>`;
+}
+function renderHistStats(res) {
+  const a = res.actual, dl = res.deltas, cur = 'ARS';
+  $('#histStats').innerHTML = [
+    histStatCard('Gasto', adsMoney(a.gasto, cur), dl.gasto, 'neutral'),
+    histStatCard('Impresiones', adsInt(a.impresiones), dl.impresiones, 'up'),
+    histStatCard('Clics', adsInt(a.clics), dl.clics, 'up'),
+    histStatCard('CTR', a.ctr != null ? a.ctr.toFixed(2) + '%' : '—', dl.ctr, 'up'),
+    histStatCard('Consultas', a.consultas != null ? adsInt(a.consultas) : '—', dl.consultas, 'up'),
+    histStatCard('Ventas', a.ventas != null ? adsInt(a.ventas) : '—', dl.ventas, 'up'),
+    histStatCard('Costo/consulta', a.costoConsulta != null ? adsMoney(a.costoConsulta, cur) : '—', dl.costoConsulta, 'down'),
+  ].join('');
+}
+
+function histRow(label, actStr, antStr, d, dir) {
+  return `<div class="hist-trow"><span class="hist-tl">${escapeHtml(label)}</span><span class="hist-ta">${actStr}</span><span class="hist-tb">${antStr}</span><span class="hist-tdd">${histDeltaChip(d, dir)}</span></div>`;
+}
+function renderHistTable(res) {
+  const a = res.actual, b = res.anterior, dl = res.deltas, cur = 'ARS';
+  const money = (n) => (n != null ? adsMoney(n, cur) : '—');
+  const intf = (n) => (n != null ? adsInt(n) : '—');
+  const pctf = (n) => (n != null ? n.toFixed(2) + '%' : '—');
+  const head = `<div class="hist-trow hist-thead"><span class="hist-tl">Métrica</span><span class="hist-ta">Actual</span><span class="hist-tb">Anterior</span><span class="hist-tdd">Δ</span></div>`;
+  const rows = [
+    histRow('Gasto total', money(a.gasto), money(b.gasto), dl.gasto, 'neutral'),
+    histRow('Impresiones', intf(a.impresiones), intf(b.impresiones), dl.impresiones, 'up'),
+    histRow('Clics', intf(a.clics), intf(b.clics), dl.clics, 'up'),
+    histRow('CTR', pctf(a.ctr), pctf(b.ctr), dl.ctr, 'up'),
+    histRow('Resultados (Meta)', intf(a.resultados), intf(b.resultados), dl.resultados, 'up'),
+    histRow('Consultas', intf(a.consultas), intf(b.consultas), dl.consultas, 'up'),
+    histRow('Ventas', intf(a.ventas), intf(b.ventas), dl.ventas, 'up'),
+    histRow('CVR', pctf(a.cvr), pctf(b.cvr), dl.cvr, 'up'),
+    histRow('Costo por consulta', money(a.costoConsulta), money(b.costoConsulta), dl.costoConsulta, 'down'),
+    histRow('Costo por venta', money(a.costoVenta), money(b.costoVenta), dl.costoVenta, 'down'),
+  ];
+  $('#histTable').innerHTML = head + rows.join('');
+}
+
+function renderHistChannels(res) {
+  const a = res.actual, cur = 'ARS';
+  const chans = [{ name: 'Meta Ads', d: a.meta }, { name: 'Google Ads', d: a.google }];
+  const tot = a.gasto || 0;
+  $('#histChannels').innerHTML = chans.map((ch) => {
+    const ctr = ch.d.impresiones ? (ch.d.clics / ch.d.impresiones) * 100 : 0;
+    return `<div class="ads-camp">
+      <div class="ads-camp-head">
+        <span class="ads-camp-name">${escapeHtml(ch.name)}</span>
+        <span class="ads-camp-right"><strong>${adsMoney(ch.d.gasto, cur)}</strong></span>
+      </div>
+      <div class="ads-camp-metrics">
+        <span>${adsInt(ch.d.impresiones)} impres. · ${adsInt(ch.d.clics)} clics · CTR ${ctr.toFixed(1)}%</span>
+        <span>${tot ? (ch.d.gasto / tot * 100).toFixed(0) + '% del gasto' : ''}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderHistNote(res) {
+  const notes = [];
+  if (res.windows.clamped) notes.push('El período anterior se recortó al largo del período calendario anterior (por eso puede tener menos días).');
+  const cov = res.coverage || {};
+  if (cov.firstConsultaDay) notes.push('Consultas/ventas registradas desde ' + histFmtDate(cov.firstConsultaDay) + ' (antes de esa fecha no hay dato: el bot de WhatsApp no guarda historia diaria).');
+  else notes.push('Todavía no hay consultas/ventas en el historial (se registran día a día desde que usás la app; Meta/Google sí se pueden reconstruir hacia atrás).');
+  notes.push('El alcance no se incluye (no es sumable entre días). Gasto en ARS.');
+  $('#histNote').innerHTML = notes.map((n) => '• ' + escapeHtml(n)).join('<br>');
+}
+
+function histBucketLabel(key, gran, i) {
+  if (!key) return String(i + 1);
+  const p = key.split('-');
+  if (gran === 'month') return ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][Number(p[1]) - 1] + ' ' + p[0].slice(2);
+  return p[2] + '/' + p[1];
+}
+function renderHistChart(res) {
+  destroyHistCharts();
+  if (typeof Chart === 'undefined') return;
+  const metric = histState.metric || 'gasto';
+  const s = (res.series && res.series[metric]) || { actual: [], anterior: [] };
+  const n = Math.max(s.actual.length, s.anterior.length);
+  const labels = [], actData = [], antData = [];
+  for (let i = 0; i < n; i++) {
+    labels.push(histBucketLabel(s.actual[i] && s.actual[i].key, res.gran, i));
+    actData.push(s.actual[i] ? s.actual[i].value : null);
+    antData.push(s.anterior[i] ? s.anterior[i].value : null);
+  }
+  $('#histMetricTabs').dataset.name = HIST_METRIC_NAME[metric] || '';
+  const opts = adsChartOpts();
+  opts.plugins.legend.display = true;
+  histCharts.push(new Chart($('#histChart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Actual', data: actData, backgroundColor: '#4c8bf5', borderRadius: 4 },
+        { label: 'Anterior', data: antData, backgroundColor: 'rgba(154,163,178,0.45)', borderRadius: 4 },
+      ],
+    },
+    options: opts,
+  }));
+}
+
+async function histUpdateNow() {
+  const btn = $('#histUpdate'); const old = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Actualizando…';
+  histShowSaveWarning(false);
+  let r;
+  try { r = await window.api.histUpdate(); await renderHist(); } catch (_) {}
+  if (r && r.saved === false) histShowSaveWarning(true);
+  btn.disabled = false; btn.textContent = old;
+}
+async function histRebuildNow() {
+  const ok = await adsConfirm({
+    title: 'Reconstruir historial',
+    message: 'Voy a traer de Meta y Google el historial diario de los últimos ~24 meses (puede tardar un minuto). Sólo lee datos, no gasta plata ni modifica campañas. ¿Seguir?',
+    okLabel: 'Reconstruir',
+  });
+  if (!ok) return;
+  const btn = $('#histRebuild'); const old = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Reconstruyendo…';
+  histShowSaveWarning(false);
+  let r;
+  try { r = await window.api.histRebuild({ months: 24 }); await renderHist(); } catch (_) {}
+  if (r && r.saved === false) histShowSaveWarning(true);
+  btn.disabled = false; btn.textContent = old;
+}
+async function histOpenSheet() {
+  try { const r = await window.api.histOpen(); if (r && !r.ok) console.error('[hist] abrir hoja:', r.error); } catch (e) { console.error('[hist] abrir hoja:', e && e.message); }
 }
 
 let adsPlatformFilter = 'all';
@@ -2371,9 +2848,16 @@ function adsCampaignRow(c, cur, filter) {
       .map((p) => `<span>${p.emoji} ${p.label}: ${adsMoney(plats[p.key].spend, ccur)} · ${adsInt(plats[p.key].impressions)} impres. · ${adsResultsText(plats[p.key].results)}</span>`);
     if (lines.length) desglose = `<div class="ads-camp-platforms">${lines.join('')}</div>`;
   }
+  // Comparación con objetivos (siempre a 30 días, sobre todas las plataformas)
+  const objBlock = adsObjCompareBlock(c, ccur);
+  const nameTitle = c.alias ? ' title="Nombre real en Meta: ' + escapeHtml(c.name || '') + '"' : '';
   return `<div class="ads-camp${c.running ? ' on' : ''}">
     <div class="ads-camp-head">
-      <span class="ads-camp-name">${escapeHtml(c.name || '(sin nombre)')}</span>
+      <span class="ads-camp-name-wrap">
+        <span class="ads-camp-name"${nameTitle}>${escapeHtml(c.displayName || c.name || '(sin nombre)')}</span>
+        <button type="button" class="ads-alias-btn" data-ads-alias="${escapeHtml(c.id)}" title="Renombrar solo acá (no cambia Meta)">✏️</button>
+        <button type="button" class="ads-alias-btn" data-ads-obj="${escapeHtml(c.id)}" title="Objetivos de la campaña">🎯</button>
+      </span>
       <span class="ads-camp-right">${badge}${adsCampaignActionBtn(c)}</span>
     </div>
     <div class="ads-camp-meta">${escapeHtml(adsObjectiveLabel(c.objective))}${budget}${accTag}</div>
@@ -2382,11 +2866,118 @@ function adsCampaignRow(c, cur, filter) {
       <span>7 días: ${adsMoney(t7.spend, ccur)} · ${adsInt(t7.impressions)} impres. · ${adsResultsText(t7.results)}</span>
     </div>
     ${desglose}
+    ${objBlock}
   </div>`;
 }
 
-// Click en Pausar/Activar (delegado en el contenedor de campañas)
+// ---- Objetivos de campaña (metas locales que se comparan con las métricas reales) ----
+// Resultado principal (misma prioridad que Meta): compras > leads > mensajes > registros > clics > interacc.
+function adsPrimaryResultValue(results) {
+  const order = ['compras', 'leads', 'mensajes', 'registros', 'linkClicks', 'interacciones'];
+  for (const k of order) if (results && Number(results[k]) > 0) return Number(results[k]);
+  return 0;
+}
+// dir 'min' = meta a alcanzar o superar · dir 'max' = tope que conviene no pasar (gasto)
+// actual recibe (t = métricas de 30 días sumadas, c = campaña completa). El alcance usa el valor
+// ÚNICO real (c.reach30, deduplicado por Meta); solo cae a la suma diaria si no se pudo traer.
+const ADS_OBJ_METRICS = [
+  { key: 'results', label: 'Resultados', fmt: 'int', dir: 'min', actual: (t) => adsPrimaryResultValue(t.results) },
+  { key: 'ctr', label: 'CTR', fmt: 'pct', dir: 'min', actual: (t) => (Number(t.impressions) ? (Number(t.clicks) / Number(t.impressions)) * 100 : 0) },
+  { key: 'reach', label: 'Alcance', fmt: 'int', dir: 'min', actual: (t, c) => Number(c && c.reach30 != null ? c.reach30 : (t.reach || 0)) },
+  { key: 'impressions', label: 'Impresiones', fmt: 'int', dir: 'min', actual: (t) => Number(t.impressions) || 0 },
+  { key: 'spend', label: 'Gasto', fmt: 'money', dir: 'max', actual: (t) => Number(t.spend) || 0 },
+];
+function adsObjFmt(v, fmt, cur) {
+  if (fmt === 'money') return adsMoney(v, cur);
+  if (fmt === 'pct') return (Number(v) || 0).toFixed(1) + '%';
+  return adsInt(v);
+}
+// Devuelve el HTML del bloque de comparación, o '' si la campaña no tiene objetivos cargados
+function adsObjCompareBlock(c, cur) {
+  const obj = c.objectives;
+  if (!obj || typeof obj !== 'object') return '';
+  const t = c.last30 || {};
+  const rows = [];
+  for (const m of ADS_OBJ_METRICS) {
+    const target = Number(obj[m.key]);
+    if (!(target > 0)) continue;
+    const actual = m.actual(t, c);
+    const ok = m.dir === 'max' ? actual <= target : actual >= target;
+    const pct = target ? Math.round((actual / target) * 100) : 0;
+    const icon = ok ? '✅' : '❌';
+    const cls = ok ? 'ads-obj-ok' : 'ads-obj-bad';
+    const word = m.dir === 'max' ? 'tope' : 'meta';
+    rows.push(`<span class="ads-obj-row ${cls}">${icon} ${m.label}: <strong>${adsObjFmt(actual, m.fmt, cur)}</strong> / ${word} ${adsObjFmt(target, m.fmt, cur)} <small>(${pct}%)</small></span>`);
+  }
+  if (!rows.length) return '';
+  return `<div class="ads-camp-obj"><span class="ads-obj-title">🎯 Objetivos · últimos 30 días</span>${rows.join('')}</div>`;
+}
+
+// Editor de alias (nombre local para mostrar)
+let adsAliasEditingId = null;
+function openAliasEditor(campaignId) {
+  const c = adsCampaignsById[campaignId];
+  if (!c) return;
+  adsAliasEditingId = campaignId;
+  $('#adsAliasReal').textContent = 'Nombre real en Meta: ' + (c.name || '(sin nombre)');
+  $('#adsAliasInput').value = c.alias || '';
+  $('#adsAliasModal').hidden = false;
+  setTimeout(() => { try { $('#adsAliasInput').focus(); $('#adsAliasInput').select(); } catch (_) {} }, 40);
+}
+function closeAliasEditor() { $('#adsAliasModal').hidden = true; adsAliasEditingId = null; }
+async function saveAlias(alias) {
+  const id = adsAliasEditingId;
+  if (!id) return;
+  try {
+    const res = await window.api.adsSetAlias({ campaignId: id, alias });
+    closeAliasEditor();
+    if (res && res.ok && res.overview) await renderAdsOverview(res.overview);
+    else await renderAdsOverview();
+  } catch (_) { closeAliasEditor(); }
+}
+
+// Editor de objetivos (metas locales por campaña)
+let adsObjEditingId = null;
+function openObjEditor(campaignId) {
+  const c = adsCampaignsById[campaignId];
+  if (!c) return;
+  adsObjEditingId = campaignId;
+  const o = c.objectives || {};
+  $('#adsObjCamp').textContent = 'Campaña: ' + (c.displayName || c.name || '(sin nombre)');
+  $('#adsObjCur').textContent = c.accountCurrency || adsCurrency || 'ARS';
+  $('#adsObjResults').value = o.results || '';
+  $('#adsObjCtr').value = o.ctr || '';
+  $('#adsObjReach').value = o.reach || '';
+  $('#adsObjImpr').value = o.impressions || '';
+  $('#adsObjSpend').value = o.spend || '';
+  $('#adsObjModal').hidden = false;
+  setTimeout(() => { try { $('#adsObjResults').focus(); $('#adsObjResults').select(); } catch (_) {} }, 40);
+}
+function closeObjEditor() { $('#adsObjModal').hidden = true; adsObjEditingId = null; }
+async function saveObjectives(clear) {
+  const id = adsObjEditingId;
+  if (!id) return;
+  const objectives = clear ? {} : {
+    results: $('#adsObjResults').value,
+    ctr: $('#adsObjCtr').value,
+    reach: $('#adsObjReach').value,
+    impressions: $('#adsObjImpr').value,
+    spend: $('#adsObjSpend').value,
+  };
+  try {
+    const res = await window.api.adsSetObjectives({ campaignId: id, objectives });
+    closeObjEditor();
+    if (res && res.ok && res.overview) await renderAdsOverview(res.overview);
+    else await renderAdsOverview();
+  } catch (_) { closeObjEditor(); }
+}
+
+// Click en ✏️ Renombrar / Pausar / Activar (delegado en el contenedor de campañas)
 async function onAdsCampaignClick(e) {
+  const aliasBtn = e.target.closest('[data-ads-alias]');
+  if (aliasBtn) { openAliasEditor(aliasBtn.dataset.adsAlias); return; }
+  const objBtn = e.target.closest('[data-ads-obj]');
+  if (objBtn) { openObjEditor(objBtn.dataset.adsObj); return; }
   const btn = e.target.closest('[data-ads-action]');
   if (!btn) return;
   const id = btn.dataset.campId;
@@ -2503,11 +3094,201 @@ async function renderAdsOverview(pre) {
   if (!ov || !ov.connected) { setAdsView('setup'); return; }
   adsLastOverview = ov;
   renderAdsFromOverview(ov);
+  renderAdsFunnel(); // embudo con consultas/ventas del Contador (cacheado, no bloquea)
 }
 
 // Re-dibuja desde el último overview cacheado (lo usa el filtro, sin volver a pedir datos)
 function applyAdsFilter() {
   if (adsLastOverview) renderAdsFromOverview(adsLastOverview);
+}
+
+// ---- Embudo: Impresiones (Meta) → Consultas (WhatsApp) → Ventas (Contador de Consultas) ----
+let adsConsultasCache = null; // { at, data }
+async function renderAdsFunnel(force) {
+  const box = $('#adsFunnelBox');
+  if (!box || !adsLastOverview) return;
+  let f = (!force && adsConsultasCache && (Date.now() - adsConsultasCache.at < 60000)) ? adsConsultasCache.data : null;
+  if (!f) {
+    box.innerHTML = '<p class="hint">Cargando consultas…</p>';
+    try { f = await window.api.adsGetConsultas(); } catch (_) { f = { ok: false }; }
+    adsConsultasCache = { at: Date.now(), data: f };
+  }
+  if ($('#adsModal').hidden) return; // cambió de vista mientras cargaba
+  if (!f || !f.ok) {
+    box.innerHTML = `<p class="hint">${f && f.offline
+      ? '🔌 Abrí el <strong>Contador de Consultas</strong> en esta PC para ver cuántas consultas y ventas generan tus anuncios.'
+      : '⚠️ ' + escapeHtml((f && f.error) || 'No se pudo leer el Contador de Consultas.')}<br>El embudo cruza las impresiones de Meta con las consultas de WhatsApp.</p>`;
+    return;
+  }
+  const ov = adsLastOverview;
+  const cur = ov.currency || adsCurrency || 'ARS';
+  const showCosts = !ov.mixedCurrency;
+  const cards = [
+    ['Últimos 7 días', ov.last7 || {}, f.last7 || {}],
+    ['Últimos 30 días', ov.last30 || {}, f.last30 || {}],
+  ].map(([lbl, meta, con]) => adsFunnelCard(lbl, meta, con, cur, showCosts)).join('');
+  const nota = '<p class="hint">Las consultas de WhatsApp no se atan a una campaña puntual: el embudo es del <strong>total de la cuenta</strong> (todas las plataformas). «Consultas» = personas únicas que escribieron por publicidad.</p>';
+  box.innerHTML = `<div class="ads-funnel-cards">${cards}</div>` + nota + (f.updatedAt ? `<p class="hint">Consultas al: ${escapeHtml(f.updatedAt)}</p>` : '');
+}
+
+function adsFunnelCard(label, meta, con, cur, showCosts) {
+  const impr = Number(meta.impressions) || 0;
+  const spend = Number(meta.spend) || 0;
+  const consultas = Number(con.consultas) || 0;
+  const ventas = Number(con.ventas) || 0;
+  const cvr = con.cvr != null ? Number(con.cvr) : (consultas ? (ventas / consultas) * 100 : 0);
+  const imprPorConsulta = consultas ? Math.round(impr / consultas) : 0;
+  const pctConsultas = impr ? (consultas / impr) * 100 : 0;
+  const costoConsulta = consultas ? spend / consultas : 0;
+  const costoVenta = ventas ? spend / ventas : 0;
+  const costos = (showCosts && spend > 0)
+    ? `<div class="ads-funnel-costs">Costo por consulta: <strong>${consultas ? adsMoney(costoConsulta, cur) : '—'}</strong> · por venta: <strong>${ventas ? adsMoney(costoVenta, cur) : '—'}</strong></div>`
+    : '';
+  return `<div class="ads-funnel-card">
+    <div class="ads-funnel-title">${label}</div>
+    <div class="ads-funnel-step"><span class="ads-funnel-k">👁️ Impresiones</span><span class="ads-funnel-v">${adsInt(impr)}</span></div>
+    <div class="ads-funnel-link">${consultas ? '1 consulta cada <strong>' + adsInt(imprPorConsulta) + '</strong> impresiones · ' + pctConsultas.toFixed(2) + '%' : 'sin consultas en el período'}</div>
+    <div class="ads-funnel-step"><span class="ads-funnel-k">💬 Consultas</span><span class="ads-funnel-v">${adsInt(consultas)}</span></div>
+    <div class="ads-funnel-link">conversión (CVR) <strong>${cvr.toFixed(1)}%</strong></div>
+    <div class="ads-funnel-step"><span class="ads-funnel-k">🛒 Ventas</span><span class="ads-funnel-v">${adsInt(ventas)}</span></div>
+    ${costos}
+  </div>`;
+}
+
+// ---- Informe: demografía (edad/género/ubicación) + rendimiento con gráficos (Chart.js) ----
+let adsReportCharts = [];
+const ADS_CHART_COLORS = ['#4c8bf5', '#2EC4B6', '#E84A6F', '#E9B949', '#B87333', '#9b8cff', '#6ee7d8', '#f5a05a', '#7bd389', '#ef8fb3'];
+function destroyReportCharts() { for (const ch of adsReportCharts) { try { ch.destroy(); } catch (_) {} } adsReportCharts = []; }
+function adsGenderLabel(g) { const m = { male: 'Hombres', female: 'Mujeres', unknown: 'Sin dato' }; return m[String(g).toLowerCase()] || g; }
+
+async function openReport() {
+  if (typeof Chart === 'undefined') { alert('No se pudo cargar la librería de gráficos.'); return; }
+  const modal = $('#adsReportModal');
+  $('#adsReportContent').hidden = true;
+  const msg = $('#adsReportMsg'); msg.hidden = false; msg.textContent = 'Cargando informe (puede tardar unos segundos)…';
+  modal.hidden = false;
+  let rep;
+  try { rep = await window.api.adsGetReport({ accountId: adsAccountFilter }); } catch (_) { rep = { ok: false }; }
+  if (modal.hidden) return; // lo cerraron mientras cargaba
+  if (!rep || !rep.ok) { msg.textContent = '⚠️ ' + ((rep && rep.error) || 'No se pudo generar el informe.'); return; }
+  msg.hidden = true;
+  $('#adsReportContent').hidden = false;
+  $('#adsReportRange').textContent = 'Período: ' + rep.since + ' → ' + rep.until + (adsAccountFilter !== 'all' ? ' · una cuenta' : ' · todas las cuentas');
+  try { Chart.defaults.color = '#9aa3b2'; } catch (_) {}
+  renderReportStats(rep);
+  renderReportCharts(rep);
+}
+function closeReport() { destroyReportCharts(); $('#adsReportModal').hidden = true; }
+
+function adsStatCard(label, val) {
+  return `<div class="ads-stat"><div class="ads-stat-v">${val}</div><div class="ads-stat-l">${escapeHtml(label)}</div></div>`;
+}
+function renderReportStats(rep) {
+  const t = (adsLastOverview && adsLastOverview.last30) || {};
+  const f = rep.funnel && rep.funnel.ok ? rep.funnel.last30 : null;
+  const cards = [
+    adsStatCard('Impresiones (30d)', adsInt(t.impressions || 0)),
+    adsStatCard('Alcance (30d)', adsInt(t.reach || 0)),
+    adsStatCard('Clics (30d)', adsInt(t.clicks || 0)),
+    adsStatCard('CTR (30d)', (t.impressions ? (t.clicks / t.impressions) * 100 : 0).toFixed(2) + '%'),
+  ];
+  if (f) {
+    cards.push(adsStatCard('Consultas', adsInt(f.consultas)));
+    cards.push(adsStatCard('Ventas', adsInt(f.ventas)));
+    cards.push(adsStatCard('CVR (conversión)', (Number(f.cvr) || 0).toFixed(1) + '%'));
+  }
+  $('#adsReportStats').innerHTML = cards.join('');
+}
+
+function adsChartOpts(kind) {
+  const dim = '#9aa3b2', grid = 'rgba(255,255,255,0.07)';
+  const base = { responsive: true, maintainAspectRatio: true, interaction: { intersect: false, mode: 'index' },
+    plugins: { legend: { display: false, labels: { color: dim, boxWidth: 12, font: { size: 11 } } } } };
+  if (kind === 'pie') { base.plugins.legend = { display: true, position: 'bottom', labels: { color: dim, boxWidth: 12, font: { size: 11 } } }; return base; }
+  if (kind === 'horizontal') {
+    base.indexAxis = 'y';
+    base.scales = { x: { ticks: { color: dim }, grid: { color: grid } }, y: { ticks: { color: dim, font: { size: 10 } }, grid: { display: false } } };
+    return base;
+  }
+  if (kind === 'dual') {
+    base.plugins.legend.display = true;
+    base.scales = {
+      x: { ticks: { color: dim, maxTicksLimit: 10, maxRotation: 0 }, grid: { display: false } },
+      y: { position: 'left', beginAtZero: true, ticks: { color: dim }, grid: { color: grid } },
+      y1: { position: 'right', beginAtZero: true, ticks: { color: dim }, grid: { display: false } },
+    };
+    return base;
+  }
+  base.scales = { x: { ticks: { color: dim }, grid: { color: grid } }, y: { beginAtZero: true, ticks: { color: dim }, grid: { color: grid } } };
+  return base;
+}
+
+function adsPct(n) { return (Number(n) || 0).toFixed(1).replace('.', ',') + '%'; }
+// Lista de texto copiable: "Etiqueta: X,X% · N impres." (o CTR). `total` opcional (para % sobre el gran total).
+function adsDistRows(list, opts) {
+  opts = opts || {};
+  const tot = opts.total != null ? opts.total : list.reduce((s, x) => s + (Number(x.impressions) || 0), 0);
+  if (!tot) return '<span class="hint">Sin datos en el período.</span>';
+  const rows = list.map((x) => {
+    const share = adsPct((Number(x.impressions) || 0) / tot * 100);
+    const extra = opts.withCtr ? 'CTR ' + adsPct(x.ctr) : adsInt(x.impressions) + ' impres.';
+    return `<div class="ads-dist-row">${escapeHtml(x.label)}: <strong>${share}</strong> <small>· ${extra}</small></div>`;
+  });
+  if (opts.otras != null && opts.otras > 0) {
+    rows.push(`<div class="ads-dist-row">Otras: <strong>${adsPct(opts.otras / tot * 100)}</strong> <small>· ${adsInt(opts.otras)} impres.</small></div>`);
+  }
+  return rows.join('');
+}
+
+function renderReportCharts(rep) {
+  destroyReportCharts();
+  // 1) Tendencia diaria: impresiones + alcance (eje izq) y CTR % (eje der)
+  const tr = rep.trend || [];
+  adsReportCharts.push(new Chart($('#adsChartTrend'), {
+    type: 'line',
+    data: {
+      labels: tr.map((d) => d.day.slice(5)),
+      datasets: [
+        { label: 'Impresiones', data: tr.map((d) => d.impressions), borderColor: '#4c8bf5', backgroundColor: 'transparent', yAxisID: 'y', tension: 0.3, pointRadius: 0, borderWidth: 2 },
+        { label: 'Alcance', data: tr.map((d) => d.reach), borderColor: '#2EC4B6', backgroundColor: 'transparent', yAxisID: 'y', tension: 0.3, pointRadius: 0, borderWidth: 2 },
+        { label: 'CTR %', data: tr.map((d) => Number(d.ctr.toFixed(2))), borderColor: '#E9B949', backgroundColor: 'transparent', yAxisID: 'y1', tension: 0.3, pointRadius: 0, borderWidth: 2, borderDash: [4, 3] },
+      ],
+    },
+    options: adsChartOpts('dual'),
+  }));
+  // 2) Género (doughnut, por impresiones)
+  const g = rep.gender || [];
+  adsReportCharts.push(new Chart($('#adsChartGender'), {
+    type: 'doughnut',
+    data: { labels: g.map((x) => adsGenderLabel(x.label)), datasets: [{ data: g.map((x) => x.impressions), backgroundColor: ADS_CHART_COLORS, borderColor: '#1b1e26', borderWidth: 2 }] },
+    options: adsChartOpts('pie'),
+  }));
+  // 3) Edad: impresiones (barras) + CTR % (línea)
+  const a = (rep.age || []).filter((x) => String(x.label).toLowerCase() !== 'unknown');
+  adsReportCharts.push(new Chart($('#adsChartAge'), {
+    type: 'bar',
+    data: {
+      labels: a.map((x) => x.label),
+      datasets: [
+        { label: 'Impresiones', data: a.map((x) => x.impressions), backgroundColor: '#4c8bf5', yAxisID: 'y', borderRadius: 4 },
+        { label: 'CTR %', type: 'line', data: a.map((x) => Number(x.ctr.toFixed(2))), borderColor: '#E9B949', backgroundColor: 'transparent', yAxisID: 'y1', tension: 0.3, borderWidth: 2 },
+      ],
+    },
+    options: adsChartOpts('dual'),
+  }));
+  // 4) Ubicación: top provincias por impresiones (barras horizontales)
+  const r = (rep.region || []).slice(0, 10);
+  adsReportCharts.push(new Chart($('#adsChartRegion'), {
+    type: 'bar',
+    data: { labels: r.map((x) => x.label), datasets: [{ label: 'Impresiones', data: r.map((x) => x.impressions), backgroundColor: '#2EC4B6', borderRadius: 4 }] },
+    options: adsChartOpts('horizontal'),
+  }));
+  // Listas de % copiables bajo cada gráfico demográfico
+  $('#adsDistGender').innerHTML = adsDistRows(g.map((x) => ({ ...x, label: adsGenderLabel(x.label) })));
+  $('#adsDistAge').innerHTML = adsDistRows(a, { withCtr: true });
+  const regionTotal = (rep.region || []).reduce((s, x) => s + (Number(x.impressions) || 0), 0);
+  const shownTotal = r.reduce((s, x) => s + (Number(x.impressions) || 0), 0);
+  $('#adsDistRegion').innerHTML = adsDistRows(r, { total: regionTotal, otras: regionTotal - shownTotal });
 }
 
 function renderAdsFromOverview(ov) {
@@ -2576,11 +3357,116 @@ function renderAdsFromOverview(ov) {
     : '<p class="hint">' + (filter === 'all'
       ? 'No hay campañas activas o con gasto reciente. Si recién conectaste, esperá unos segundos y tocá 🔄 Actualizar.'
       : 'No hay campañas con actividad en esta red en los últimos 7 días.') + '</p>');
+
+  renderAdsSchedules(ov.schedules || []);
+}
+
+// ---- Pausas programadas ----
+const DOW_ES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+function adsSchedWhenText(s) {
+  const hh = String(s.hh).padStart(2, '0');
+  const mm = String(s.mm).padStart(2, '0');
+  if (s.type === 'weekly') return `Cada ${DOW_ES[Number(s.dow)] || '—'} a las ${hh}:${mm}`;
+  const d = s.whenMs ? new Date(Number(s.whenMs)) : null;
+  if (!d) return `A las ${hh}:${mm}`;
+  return `El ${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()} a las ${hh}:${mm}`;
+}
+function renderAdsSchedules(schedules) {
+  const box = $('#adsSchedList');
+  if (!box) return;
+  if (!schedules.length) { box.innerHTML = '<p class="hint">No hay pausas programadas.</p>'; return; }
+  // vigentes primero (semanal o "una vez" sin ejecutar), después las ya ejecutadas
+  const sorted = schedules.slice().sort((a, b) => {
+    const ad = a.type === 'once' && a.done ? 1 : 0;
+    const bd = b.type === 'once' && b.done ? 1 : 0;
+    return ad - bd;
+  });
+  box.innerHTML = sorted.map((s) => {
+    const spent = s.type === 'once' && s.done;
+    const retrying = !!s.occAt; // ocurrencia en curso reintentando
+    const estado = retrying
+      ? `<span class="ads-sched-retry">⏳ ${escapeHtml(s.lastResult || 'Reintentando…')}</span>`
+      : spent
+        ? `<span class="ads-sched-done">✔ Ejecutada${s.lastResult ? ' · ' + escapeHtml(s.lastResult) : ''}</span>`
+        : (s.lastResult ? `<span class="ads-sched-last">Última vez: ${escapeHtml(s.lastResult)}</span>` : '<span class="ads-sched-next">Pendiente</span>');
+    return `<div class="ads-sched-row${spent ? ' spent' : ''}">
+      <div class="ads-sched-info">
+        <span class="ads-sched-when">${escapeHtml(adsSchedWhenText(s))}</span>
+        <span class="ads-sched-target">${escapeHtml(s.targetName || 'Todas las activas')}</span>
+        ${estado}
+      </div>
+      <button type="button" class="ads-sched-del" data-ads-sched-del="${escapeHtml(s.id)}" title="Eliminar">🗑</button>
+    </div>`;
+  }).join('');
+}
+
+function openSchedEditor() {
+  // Poblar el desplegable de campañas con las activas (y "Todas")
+  const sel = $('#adsSchedTarget');
+  const running = Object.values(adsCampaignsById).filter((c) => c.running);
+  sel.innerHTML = '<option value="ALL">Todas las campañas activas</option>'
+    + running.map((c) => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.displayName || c.name || c.id)}</option>`).join('');
+  // Valores por defecto
+  const today = new Date();
+  const yyyy = today.getFullYear();
+  const mm = String(today.getMonth() + 1).padStart(2, '0');
+  const dd = String(today.getDate()).padStart(2, '0');
+  $('#adsSchedDate').value = `${yyyy}-${mm}-${dd}`;
+  $('#adsSchedDate').min = `${yyyy}-${mm}-${dd}`;
+  $('#adsSchedTime').value = '23:59';
+  const onceRadio = document.querySelector('input[name="adsSchedType"][value="once"]');
+  if (onceRadio) onceRadio.checked = true;
+  updateSchedType();
+  const msg = $('#adsSchedMsg'); msg.hidden = true; msg.textContent = '';
+  $('#adsSchedModal').hidden = false;
+}
+function closeSchedEditor() { $('#adsSchedModal').hidden = true; }
+function updateSchedType() {
+  const type = (document.querySelector('input[name="adsSchedType"]:checked') || {}).value || 'once';
+  $('#adsSchedOnceRow').hidden = type !== 'once';
+  $('#adsSchedWeeklyRow').hidden = type !== 'weekly';
+}
+async function saveSchedule() {
+  const type = (document.querySelector('input[name="adsSchedType"]:checked') || {}).value || 'once';
+  const sel = $('#adsSchedTarget');
+  const target = sel.value || 'ALL';
+  const targetName = target === 'ALL' ? 'Todas las campañas activas' : (sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : target);
+  const time = $('#adsSchedTime').value || '';
+  const tm = /^(\d{2}):(\d{2})$/.exec(time);
+  const msg = $('#adsSchedMsg');
+  if (!tm) { msg.textContent = 'Poné una hora válida.'; msg.hidden = false; return; }
+  const payload = { type, target, targetName, hh: Number(tm[1]), mm: Number(tm[2]) };
+  if (type === 'once') payload.dateStr = $('#adsSchedDate').value || '';
+  else payload.dow = Number($('#adsSchedDow').value);
+  try {
+    const res = await window.api.adsAddSchedule(payload);
+    if (res && res.ok) {
+      closeSchedEditor();
+      if (res.overview) await renderAdsOverview(res.overview); else await renderAdsOverview();
+    } else {
+      msg.textContent = (res && res.error) || 'No se pudo programar.'; msg.hidden = false;
+    }
+  } catch (_) { msg.textContent = 'No se pudo programar.'; msg.hidden = false; }
+}
+async function deleteSchedule(id) {
+  try {
+    const res = await window.api.adsDeleteSchedule({ id });
+    if (res && res.ok && res.overview) await renderAdsOverview(res.overview);
+    else await renderAdsOverview();
+  } catch (_) {}
+}
+async function onAdsSchedListClick(e) {
+  const del = e.target.closest('[data-ads-sched-del]');
+  if (!del) return;
+  const id = del.dataset.adsSchedDel;
+  const ok = await adsConfirm({ title: 'Eliminar pausa programada', message: '¿Querés eliminar esta pausa programada?', okLabel: 'Sí, eliminar', danger: true });
+  if (ok) deleteSchedule(id);
 }
 
 async function renderAdsOverviewForced() {
   const btn = $('#adsRefreshBtn');
   const prev = btn.textContent;
+  adsConsultasCache = null; // al actualizar a mano, refrescar también las consultas del Contador
   btn.disabled = true; btn.textContent = '⏳ Actualizando…';
   try {
     const ov = await window.api.adsRefresh();

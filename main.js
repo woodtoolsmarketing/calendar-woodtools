@@ -20,7 +20,11 @@ const threads = require('./integrations/threads');
 const tiktok = require('./integrations/tiktok');
 const transcode = require('./integrations/transcode');
 const metaAds = require('./integrations/metaAds');
+const googleAds = require('./integrations/googleAds');
+const consultas = require('./integrations/consultas');
 const adsStore = require('./adsStore');
+const history = require('./integrations/history');
+const historyStore = require('./integrations/historyStore');
 
 const APP_ID = 'com.woodtools.calendario';
 const ICON_PATH = path.join(__dirname, 'assets', 'icon.png');
@@ -1761,6 +1765,21 @@ function maybeMorningAdsSummary(store) {
   }
 }
 
+// Persiste el resultado del sondeo SIN pisar lo que pollAds no administra (schedules/objectives/
+// aliases): relee el store fresco y copia encima solo los campos de métricas. Relee + escribe sin
+// ningún await en el medio → atómico respecto del event loop (evita lost-update con checkAdsSchedules
+// y con los handlers que escriben alias/objetivos/programaciones durante la ventana de red del sondeo).
+function persistPollResult(store) {
+  const fresh = adsStore.read();
+  fresh.accounts = store.accounts;
+  fresh.days = store.days;
+  fresh.campaigns = store.campaigns;
+  fresh.lastSyncAt = store.lastSyncAt;
+  fresh.lastError = store.lastError;
+  fresh.morningNotifiedDay = store.morningNotifiedDay;
+  adsStore.write(fresh);
+}
+
 // Sondeo: trae campañas + insights diarios y guarda "fotos" por día. Se auto-repara
 // (reescribe los últimos 7–30 días), así recupera lo de la noche o de días con la PC apagada.
 async function pollAds({ force } = {}) {
@@ -1808,6 +1827,16 @@ async function pollAds({ force } = {}) {
           accountId: acc.id, accountName: acc.name, currency: acc.currency, lastSeenAt: now,
         };
       }
+      // Alcance ÚNICO real de 30 días por campaña: Meta lo deduplica sobre el rango (time_increment=0),
+      // a diferencia de la suma diaria que sobrecuenta personas. Se usa para comparar con el objetivo
+      // de alcance. Best-effort: si falla, el objetivo cae a la suma (aproximada).
+      try {
+        const aggRows = await metaAds.getInsights(c.token, acc.id, { since, until, level: 'campaign', timeIncrement: 0 });
+        for (const r of aggRows) {
+          const id = String(r.campaign_id || '');
+          if (id && campaignsMap[id]) campaignsMap[id].reach30 = Number(r.reach) || 0;
+        }
+      } catch (_) {}
       for (const row of rows) {
         const day = row.date_start;
         if (!day) continue;
@@ -1858,12 +1887,13 @@ async function pollAds({ force } = {}) {
     } else {
       store.lastError = 'No se pudieron leer las cuentas publicitarias (revisá la conexión o el token).';
     }
-    adsStore.write(store);
+    persistPollResult(store);
     sendToMain('ads:changed');
+    if (anyOk) { try { historyStore.upsert(history.metaDaysToRows(store.days)); } catch (he) { console.error('[hist] flush Meta falló:', he && he.message); } }
   } catch (e) {
     const ue = metaAds._toUserError(e);
     store.lastError = ue.message; // un error de red NO pisa la última sync buena
-    adsStore.write(store);
+    persistPollResult(store);
     sendToMain('ads:changed');
     console.error('[ads] sondeo falló:', ue.message);
   } finally {
@@ -1891,6 +1921,10 @@ function buildAdsOverview() {
     name: cam.name, objective: cam.objective, effectiveStatus: cam.effectiveStatus,
     running: !!cam.running, dailyBudget: cam.dailyBudget != null ? cam.dailyBudget : null,
     accountId: cam.accountId || '', accountName: cam.accountName || '', accountCurrency: cam.currency || currency,
+    alias: (store.aliases && store.aliases[id]) || '',
+    displayName: (store.aliases && store.aliases[id]) || cam.name || '(sin nombre)',
+    objectives: (store.objectives && store.objectives[id]) || null,
+    reach30: cam.reach30 != null ? Number(cam.reach30) : null, // alcance único real de 30 días (deduplicado)
     today: (store.days[todayKey] && store.days[todayKey].perCampaign && store.days[todayKey].perCampaign[id]) || null,
     last7: sumCampaignDays(store.days, id, 7, nowDate),
     last30: sumCampaignDays(store.days, id, 30, nowDate),
@@ -1940,7 +1974,166 @@ function buildAdsOverview() {
       last30: metaAds.sumPlatformForKeys(store.days, metaAds.lastNDayKeys(30, nowDate)),
     },
     campaigns,
+    schedules: Array.isArray(store.schedules) ? store.schedules : [],
   };
+}
+
+// ----------------------------------------------------------------------------
+// Pausas programadas (una vez o semanal). Corren SOLO con la app abierta.
+// ----------------------------------------------------------------------------
+let adsSchedRunning = false;
+
+// 'YYYY-MM-DD' + hora/min → Date local (o null si inválido)
+function parseLocalDateTime(dateStr, hh, mm) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateStr || ''));
+  if (!m) return null;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(hh) || 0, Number(mm) || 0, 0, 0);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+// Reintento por TIEMPO (no por cantidad): ante un fallo transitorio se reintenta durante una ventana,
+// manejado por la propia ocurrencia (occNextRetryAt) con independencia de scheduleDue. Así una pausa
+// cerca de medianoche sigue reintentando después de las 00:00, y un corte breve se recupera.
+const ADS_SCHED_RETRY_WINDOW_MS = 2 * 60 * 60 * 1000; // reintenta hasta 2 h desde el primer intento
+const ADS_SCHED_RETRY_INTERVAL_MS = 60 * 1000;        // a lo sumo un reintento por minuto
+
+// Timestamp (ms) de la ocurrencia a correr AHORA, o null si no corresponde.
+// - Con una ocurrencia EN CURSO (occAt seteado) manda el reintento (occNextRetryAt), sin mirar
+//   scheduleDue → clave para semanales que cruzan la medianoche.
+// - Si no, scheduleDue detecta una ocurrencia NUEVA (once: whenMs; weekly: la ocurrencia más
+//   reciente dentro de la ventana de gracia, que puede ser de ayer si se cruzó la medianoche).
+function adsOccurrenceDue(sched, now) {
+  const nowMs = now.getTime();
+  if (sched.occAt) {
+    return (Number(sched.occNextRetryAt) || 0) <= nowMs ? Number(sched.occAt) : null;
+  }
+  if (!metaAds.scheduleDue(sched, now)) return null;
+  if (sched.type === 'once') return Number(sched.whenMs) || nowMs;
+  return metaAds.mostRecentWeeklyOccurrence(sched, now); // mismo instante que validó scheduleDue
+}
+
+// Pausa los objetivos. 'ALL' = todas las campañas activas de TODAS las cuentas. Pausa POR CUENTA y
+// recuerda en sched.occDone las que ya resolvió, para NO re-escanearlas en los reintentos (así no
+// re-pausa una campaña que el usuario reactivó en una cuenta sana mientras otra cuenta sigue fallando).
+// Devuelve {pausedNow, hadError, msg}.
+async function pauseScheduleTargets(sched) {
+  const c = adsCreds();
+  if (!c.token) return { pausedNow: 0, hadError: true, msg: 'Falta el token de Publicidad.' };
+  // Campaña puntual
+  if (sched.target !== 'ALL') {
+    try { await metaAds.setEntityStatus(c.token, String(sched.target), 'PAUSED'); return { pausedNow: 1, hadError: false, msg: 'Pausé la campaña.' }; }
+    catch (e) { return { pausedNow: 0, hadError: true, msg: 'No se pudo pausar: ' + metaAds._toUserError(e).message }; }
+  }
+  // Todas las cuentas
+  let accounts;
+  try { accounts = await metaAds.listAdAccounts(c.token); }
+  catch (e) { return { pausedNow: 0, hadError: true, msg: 'No se pudieron leer las cuentas: ' + metaAds._toUserError(e).message }; }
+  if (!accounts.length && c.adAccountId) accounts = [{ id: String(c.adAccountId) }]; // respaldo, como pollAds
+  if (!accounts.length) return { pausedNow: 0, hadError: true, msg: 'Meta no devolvió cuentas; reintento.' }; // lista vacía = error, NO falso éxito
+  sched.occDone = Array.isArray(sched.occDone) ? sched.occDone : [];
+  let pausedNow = 0, pending = 0, lastErr = '';
+  for (const a of accounts) {
+    if (sched.occDone.indexOf(a.id) >= 0) continue; // cuenta ya resuelta esta ocurrencia → no re-tocar
+    let camps;
+    try { camps = await metaAds.getCampaigns(c.token, a.id); }
+    catch (e) { pending++; lastErr = metaAds._toUserError(e).message; continue; }
+    let failed = 0;
+    for (const id of camps.filter((x) => x.running).map((x) => String(x.id))) {
+      try { await metaAds.setEntityStatus(c.token, id, 'PAUSED'); pausedNow++; }
+      catch (e) { failed++; lastErr = metaAds._toUserError(e).message; }
+    }
+    if (failed === 0) sched.occDone.push(a.id); // cuenta leída y pausada OK → no volver a escanearla
+    else pending++;
+  }
+  const hadError = pending > 0;
+  const msg = hadError
+    ? `pausé ${pausedNow}; ${pending} cuenta(s) pendientes (${lastErr})`
+    : (pausedNow ? `pausé ${pausedNow}` : 'No había campañas activas para pausar.');
+  return { pausedNow, hadError, msg };
+}
+
+// Marca la ocurrencia como consumida (scheduleDue no la vuelve a disparar) y limpia el estado de reintento.
+function consumeOccurrence(sched, occAt) {
+  sched.occAt = null; sched.occFirstTryAt = null; sched.occNextRetryAt = null;
+  sched.attempts = 0; sched.occPaused = 0; sched.occDone = [];
+  sched.lastRunAt = Number(occAt) || Date.now();
+  if (sched.type === 'once') sched.done = true;
+}
+
+// Corre UNA ocurrencia (nueva o reintento): pausa y, según el resultado, consume o reprograma reintento.
+async function runScheduledOccurrence(sched, occAt) {
+  const nowMs = Date.now();
+  const fresh = !sched.occAt;
+  if (fresh) { sched.occAt = occAt; sched.occFirstTryAt = nowMs; sched.attempts = 0; sched.occPaused = 0; sched.occDone = []; }
+  else if ((nowMs - (Number(sched.occFirstTryAt) || nowMs)) >= ADS_SCHED_RETRY_WINDOW_MS) {
+    // La ventana ya venció (incl. ocurrencia RANCIA: la app estuvo cerrada con un reintento a medias).
+    // Rendirse SIN pausar el set actual, para no disparar una pausa fuera de horario.
+    const paused = Number(sched.occPaused) || 0;
+    consumeOccurrence(sched, occAt);
+    sched.lastResult = (paused > 0 ? `Pausé ${paused} pero no se completó ` : 'No se pudo completar ') + '(venció la ventana de reintento).';
+    showNotification({ title: '⚠️ No se pudo completar la pausa programada', body: `${sched.targetName}: ${sched.lastResult}`, urgency: 'critical', onClick: openAdsUI });
+    return;
+  }
+  const r = await pauseScheduleTargets(sched);
+  sched.attempts = (Number(sched.attempts) || 0) + 1;
+  sched.occPaused = (Number(sched.occPaused) || 0) + (Number(r.pausedNow) || 0);
+
+  if (!r.hadError) {
+    // Éxito (incluye "no había nada que pausar"): consumir y avisar.
+    const total = sched.occPaused;
+    const m = (total > (Number(r.pausedNow) || 0)) ? `Pausé ${total} campaña(s) en total.` : r.msg;
+    consumeOccurrence(sched, occAt);
+    sched.lastResult = m;
+    showNotification({ title: '⏰ Pausa programada ejecutada', body: `${sched.targetName}: ${m}`, urgency: 'critical', onClick: openAdsUI });
+    return;
+  }
+  // Falló algo pero seguimos dentro de la ventana (el chequeo de arriba garantiza que no venció):
+  // reprogramar reintento y avisar una sola vez (al primer fallo), sin spamear.
+  sched.occNextRetryAt = nowMs + ADS_SCHED_RETRY_INTERVAL_MS;
+  sched.lastResult = `${r.msg} · reintentando…`;
+  if (sched.attempts === 1) {
+    showNotification({ title: '⏳ No se pudo pausar aún — reintentando', body: `${sched.targetName}: ${r.msg}`, urgency: 'normal', onClick: openAdsUI });
+  }
+}
+
+// Persiste el estado de UN schedule tras ejecutarlo: relee fresco y aplica solo sus campos por id, sin
+// await en el medio = atómico. Persistir por ocurrencia (no al final) acota a microsegundos la ventana
+// en que un cierre forzado entre la pausa en Meta y el guardado podría re-disparar.
+function persistScheduleState(s) {
+  const fresh = adsStore.read();
+  fresh.schedules = (Array.isArray(fresh.schedules) ? fresh.schedules : []).map((x) =>
+    x.id === s.id
+      ? { ...x, lastRunAt: s.lastRunAt, done: s.done, attempts: s.attempts, lastResult: s.lastResult,
+          occAt: s.occAt, occFirstTryAt: s.occFirstTryAt, occNextRetryAt: s.occNextRetryAt, occPaused: s.occPaused, occDone: s.occDone }
+      : x);
+  adsStore.write(fresh);
+}
+
+// Revisa si hay pausas que correr (nuevas o reintentos) y las ejecuta. Intervalo con la app abierta.
+async function checkAdsSchedules() {
+  if (adsSchedRunning || !adsConnected()) return;
+  const store = adsStore.read();
+  const schedules = Array.isArray(store.schedules) ? store.schedules : [];
+  if (!schedules.length) return;
+  const now = new Date();
+  const due = [];
+  for (const s of schedules) {
+    const occAt = adsOccurrenceDue(s, now);
+    if (occAt != null) due.push({ s, occAt });
+  }
+  if (!due.length) return;
+  adsSchedRunning = true;
+  try {
+    for (const d of due) {
+      await runScheduledOccurrence(d.s, d.occAt); // muta d.s
+      persistScheduleState(d.s);                  // guarda ya (relee+escribe sincrónico = atómico)
+    }
+    sendToMain('ads:changed');      // refresca el panel si está abierto
+  } catch (e) {
+    console.error('[ads] checkAdsSchedules:', e && e.message);
+  } finally {
+    adsSchedRunning = false;
+  }
 }
 
 ipcMain.handle('ads:status', () => {
@@ -2001,6 +2194,234 @@ ipcMain.handle('ads:getOverview', async () => {
 ipcMain.handle('ads:refresh', async () => {
   await pollAds({ force: true });
   return buildAdsOverview();
+});
+
+// Embudo: trae consultas/ventas del Contador de Consultas (localhost:3100). Lectura best-effort;
+// si el Contador está apagado devuelve {ok:false, offline:true}. El renderer las cruza con las
+// impresiones/gasto de Meta para el % impresiones→consulta y la conversión (CVR).
+ipcMain.handle('ads:getConsultas', async () => {
+  const funnel = await consultas.fetchFunnel();
+  try { snapshotConsultasHistory(funnel); } catch (e) { console.error('[hist] snapshot consultas falló:', e && e.message); }
+  return funnel;
+});
+
+// Informe: datos demográficos (edad/género/región) de 30 días + tendencia diaria + CVR del embudo.
+// Trae la demografía fresca de Meta (no se guarda) y la tendencia desde las fotos diarias guardadas.
+ipcMain.handle('ads:getReport', async (_e, payload) => {
+  try {
+    const c = adsCreds();
+    if (!c.token) return { ok: false, error: 'Conectá Publicidad primero.' };
+    const accountFilter = (payload && payload.accountId && payload.accountId !== 'all') ? String(payload.accountId) : null;
+    const nowDate = new Date();
+    const { since, until } = metaAds.rangeForDays(30, nowDate);
+
+    let accounts = [];
+    try { accounts = await metaAds.listAdAccounts(c.token); } catch (_) {}
+    if (accountFilter) accounts = accounts.filter((a) => a.id === accountFilter);
+    if (!accounts.length && c.adAccountId) accounts = [{ id: String(c.adAccountId) }];
+
+    // Demografía: suma los buckets por etiqueta a través de las cuentas elegidas.
+    const empty = () => metaAds.emptyTotals().results;
+    const merged = { age: {}, gender: {}, region: {} };
+    for (const bd of ['age', 'gender', 'region']) {
+      for (const a of accounts) {
+        let rows = [];
+        try { rows = await metaAds.getInsightsByBreakdown(c.token, a.id, bd, { since, until }); } catch (_) { continue; }
+        for (const b of metaAds.groupByBreakdown(rows, [bd])) {
+          const cur = merged[bd][b.label] || (merged[bd][b.label] = { label: b.label, impressions: 0, reach: 0, clicks: 0, spend: 0, results: empty() });
+          cur.impressions += b.impressions; cur.reach += b.reach; cur.clicks += b.clicks; cur.spend += b.spend;
+          for (const k of Object.keys(cur.results)) cur.results[k] += (b.results[k] || 0);
+        }
+      }
+    }
+    const toList = (obj) => Object.values(obj)
+      .map((x) => ({ ...x, ctr: x.impressions ? (x.clicks / x.impressions) * 100 : 0, result: metaAds.primaryResult(x.results) }))
+      .sort((a, b) => b.impressions - a.impressions);
+
+    // Tendencia diaria (de lo guardado): impresiones, alcance, CTR por día (30 días).
+    const store = adsStore.read();
+    const scope = (d) => (accountFilter && d && d.byAccount && d.byAccount[accountFilter]) ? d.byAccount[accountFilter] : d;
+    const trend = metaAds.lastNDayKeys(30, nowDate).slice().sort().map((k) => { // orden cronológico (viejo→nuevo)
+      const s = store.days[k] ? scope(store.days[k]) : null;
+      const impr = s ? Number(s.impressions) || 0 : 0;
+      const clicks = s ? Number(s.clicks) || 0 : 0;
+      return { day: k, impressions: impr, reach: s ? Number(s.reach) || 0 : 0, clicks, ctr: impr ? (clicks / impr) * 100 : 0 };
+    });
+
+    let funnel = null;
+    try { funnel = await consultas.fetchFunnel(); } catch (_) {}
+
+    return { ok: true, since, until, age: toList(merged.age), gender: toList(merged.gender), region: toList(merged.region), trend, funnel };
+  } catch (e) {
+    return { ok: false, error: metaAds._toUserError(e).message };
+  }
+});
+
+// ====================== GOOGLE ADS ======================
+// Credenciales: refreshToken + customerId van en platform 'googleAds'; el Client ID/Secret se
+// REUTILIZAN de la conexión de YouTube (mismo proyecto de Google Cloud). Lectura en vivo (sin store):
+// la API de Google Ads ya devuelve los 30 días agregados.
+function gadsCreds() {
+  const g = (() => { try { return credentials.getPlatform('googleAds') || {}; } catch (_) { return {}; } })();
+  const y = (() => { try { return credentials.getPlatform('youtube') || {}; } catch (_) { return {}; } })();
+  return {
+    clientId: g.clientId || y.clientId || '',
+    clientSecret: g.clientSecret || y.clientSecret || '',
+    refreshToken: g.refreshToken || '',
+    customerId: g.customerId || '',
+  };
+}
+
+ipcMain.handle('gads:status', () => {
+  const c = gadsCreds();
+  return { connected: !!(c.refreshToken && c.customerId), customerId: c.customerId, hasGoogleClient: !!(c.clientId && c.clientSecret) };
+});
+
+ipcMain.handle('gads:connect', async (_e, payload) => {
+  try {
+    const customerId = String((payload || {}).customerId || '').replace(/\D/g, '');
+    if (!customerId) return { ok: false, error: 'Falta el Customer ID de Google Ads (formato 123-456-7890).' };
+    const y = (() => { try { return credentials.getPlatform('youtube') || {}; } catch (_) { return {}; } })();
+    if (!y.clientId || !y.clientSecret) {
+      return { ok: false, error: 'Conectá YouTube primero en ⚙ Conexiones: Google Ads reutiliza ese Client ID/Secret de Google.' };
+    }
+    const r = await googleAds.connect({ clientId: y.clientId, clientSecret: y.clientSecret });
+    credentials.setPlatform('googleAds', { refreshToken: r.refreshToken, customerId, scope: r.scope, connectedAt: r.connectedAt });
+    return { ok: true, customerId };
+  } catch (e) {
+    return { ok: false, error: googleAds._toUserError(e).message };
+  }
+});
+
+ipcMain.handle('gads:disconnect', () => { try { credentials.clearPlatform('googleAds'); } catch (_) {} return true; });
+
+ipcMain.handle('gads:getOverview', async () => {
+  try {
+    const c = gadsCreds();
+    if (!c.refreshToken || !c.customerId) return { ok: false, connected: false, error: 'Conectá Google Ads primero.' };
+    const at = await googleAds.refreshAccessToken(c);
+    const [campaigns, daily] = await Promise.all([
+      googleAds.getCampaigns(at, c.customerId),
+      googleAds.getDailyTotals(at, c.customerId),
+    ]);
+    const totals = campaigns.reduce((t, x) => {
+      t.impressions += x.impressions; t.clicks += x.clicks; t.cost += x.cost; t.conversions += x.conversions; return t;
+    }, { impressions: 0, clicks: 0, cost: 0, conversions: 0 });
+    totals.ctr = totals.impressions ? (totals.clicks / totals.impressions) * 100 : 0;
+    try { historyStore.upsert(history.googleDailyToRows(daily)); } catch (he) { console.error('[hist] flush Google falló:', he && he.message); }
+    return { ok: true, connected: true, customerId: c.customerId, campaigns, daily, totals };
+  } catch (e) {
+    const ue = googleAds._toUserError(e);
+    return { ok: false, connected: true, error: ue.message, needsReconnect: !!ue.needsReconnect, needsAccess: !!ue.needsAccess };
+  }
+});
+
+// Pausar / activar una campaña de Google Ads (GASTA/!gasta plata real: el renderer confirma antes).
+ipcMain.handle('gads:setStatus', async (_e, payload) => {
+  try {
+    const c = gadsCreds();
+    if (!c.refreshToken || !c.customerId) return { ok: false, error: 'Conectá Google Ads primero.' };
+    const id = String((payload || {}).campaignId || '');
+    const status = String((payload || {}).status || '').toUpperCase();
+    if (!id) return { ok: false, error: 'Falta la campaña.' };
+    if (status !== 'ENABLED' && status !== 'PAUSED') return { ok: false, error: 'Estado inválido.' };
+    const at = await googleAds.refreshAccessToken(c);
+    await googleAds.setCampaignStatus(at, c.customerId, id, status);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: googleAds._toUserError(e).message };
+  }
+});
+
+// Alias local (nombre para mostrar) de una campaña — NO cambia el nombre real en Meta
+ipcMain.handle('ads:setAlias', (_e, payload) => {
+  try {
+    const p = payload || {};
+    const id = String(p.campaignId || '');
+    if (!id) return { ok: false, error: 'Falta la campaña.' };
+    const store = adsStore.read();
+    store.aliases = store.aliases || {};
+    const alias = String(p.alias || '').trim();
+    if (alias) store.aliases[id] = alias;
+    else delete store.aliases[id];
+    adsStore.write(store);
+    return { ok: true, overview: buildAdsOverview() };
+  } catch (e) {
+    return { ok: false, error: (e && e.message) || String(e) };
+  }
+});
+
+// Objetivos/metas locales de una campaña (para comparar con lo real)
+ipcMain.handle('ads:setObjectives', (_e, payload) => {
+  try {
+    const p = payload || {};
+    const id = String(p.campaignId || '');
+    if (!id) return { ok: false, error: 'Falta la campaña.' };
+    const src = p.objectives && typeof p.objectives === 'object' ? p.objectives : {};
+    const clean = {};
+    for (const k of ['ctr', 'results', 'spend', 'reach', 'impressions']) {
+      const v = Number(src[k]);
+      if (Number.isFinite(v) && v > 0) clean[k] = v;
+    }
+    const store = adsStore.read();
+    store.objectives = store.objectives || {};
+    if (Object.keys(clean).length) store.objectives[id] = clean;
+    else delete store.objectives[id];
+    adsStore.write(store);
+    return { ok: true, overview: buildAdsOverview() };
+  } catch (e) {
+    return { ok: false, error: (e && e.message) || String(e) };
+  }
+});
+
+// Programa una pausa (una vez o semanal). NO gasta plata; pausar solo detiene.
+ipcMain.handle('ads:addSchedule', (_e, payload) => {
+  try {
+    const p = payload || {};
+    const type = p.type === 'weekly' ? 'weekly' : 'once';
+    const target = String(p.target || 'ALL');
+    const targetName = String(p.targetName || (target === 'ALL' ? 'Todas las campañas activas' : target)).slice(0, 120);
+    const hh = Math.floor(Number(p.hh));
+    const mm = Math.floor(Number(p.mm));
+    if (!(hh >= 0 && hh <= 23) || !(mm >= 0 && mm <= 59)) return { ok: false, error: 'Hora inválida.' };
+    const sched = {
+      id: 's_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+      type, target, targetName, hh, mm,
+      whenMs: null, dow: null,
+      createdAt: Date.now(), lastRunAt: null, lastResult: null, done: false,
+      attempts: 0, occAt: null, occFirstTryAt: null, occNextRetryAt: null, occPaused: 0, occDone: [],
+    };
+    if (type === 'once') {
+      const d = parseLocalDateTime(p.dateStr, hh, mm);
+      if (!d) return { ok: false, error: 'Fecha inválida.' };
+      if (d.getTime() < Date.now() - 60 * 1000) return { ok: false, error: 'Esa fecha y hora ya pasaron.' };
+      sched.whenMs = d.getTime();
+    } else {
+      const dow = Math.floor(Number(p.dow));
+      if (!(dow >= 0 && dow <= 6)) return { ok: false, error: 'Día de la semana inválido.' };
+      sched.dow = dow;
+    }
+    const store = adsStore.read();
+    store.schedules = Array.isArray(store.schedules) ? store.schedules : [];
+    store.schedules.push(sched);
+    adsStore.write(store);
+    return { ok: true, overview: buildAdsOverview() };
+  } catch (e) {
+    return { ok: false, error: (e && e.message) || String(e) };
+  }
+});
+
+ipcMain.handle('ads:deleteSchedule', (_e, payload) => {
+  try {
+    const id = String((payload || {}).id || '');
+    if (!id) return { ok: false, error: 'Falta el id.' };
+    const store = adsStore.read();
+    store.schedules = (Array.isArray(store.schedules) ? store.schedules : []).filter((s) => s.id !== id);
+    adsStore.write(store);
+    return { ok: true, overview: buildAdsOverview() };
+  } catch (e) {
+    return { ok: false, error: (e && e.message) || String(e) };
+  }
 });
 
 // Fase 2: activar / pausar una campaña (requiere ads_management). Gasta/!gasta plata real:
@@ -2065,6 +2486,147 @@ ipcMain.handle('ads:createBoost', async (_e, payload) => {
   } catch (e) {
     return { ok: false, error: metaAds._toUserError(e).message };
   }
+});
+
+// ============================================================================
+// Historial / Comparativa — hoja de cálculo liviana en userData (sólo métricas).
+// Alimentada por pollAds (Meta), gads:getOverview (Google) y snapshots de consultas;
+// backfill a pedido con tramos mensuales (Meta getInsights / Google getDailyBetween).
+// ============================================================================
+
+// Registra consultas/ventas del día: 'hoy' (parcial, se refresca) y 'ayer' (día cerrado, autoritativo).
+function snapshotConsultasHistory(funnel) {
+  if (!funnel || !funnel.ok) return true;
+  const today = history.ymdLocal(new Date());
+  const yest = history.addDays(today, -1);
+  const rows = [];
+  const rHoy = history.consultaRow(funnel.hoy, today); if (rHoy) rows.push(rHoy);
+  const rAyer = history.consultaRow(funnel.ayer, yest); if (rAyer) rows.push(rAyer);
+  return rows.length ? historyStore.upsert(rows).ok : true;
+}
+
+// Backfill de Meta: getInsights a nivel CUENTA (level:'account') con timeIncrement:1 por tramos mensuales.
+// A nivel cuenta Meta devuelve 1 fila por día (<=31 por tramo), así nunca se topa el límite de 1000 filas de
+// getInsights (que no pagina). El backfill sólo agrega totales diarios (descarta campaign_id), así que no
+// necesita granularidad por campaña. Suma todas las cuentas por día. Devuelve un resumen del backfill.
+async function backfillMetaHistory(months) {
+  const c = adsCreds();
+  if (!c || !c.token) return { ok: false, source: 'meta', error: 'Meta no está conectado.' };
+  const now = new Date();
+  const until = history.ymdLocal(now);
+  const since = history.ymdLocal(new Date(now.getFullYear(), now.getMonth() - (months - 1), 1));
+  let accounts = [];
+  try { accounts = await metaAds.listAdAccounts(c.token); } catch (_) {}
+  accounts = (accounts || []).filter((a) => a && a.id);
+  if (!accounts.length && c.adAccountId) accounts = [{ id: String(c.adAccountId) }];
+  const chunks = history.monthChunks(since, until);
+  const byDay = {};
+  let got = 0, failed = 0;
+  for (const chunk of chunks) {
+    for (const acc of accounts) {
+      try {
+        const raw = await metaAds.getInsights(c.token, acc.id, { since: chunk.since, until: chunk.until, level: 'account', timeIncrement: 1 });
+        for (const r of history.metaInsightRowsToDaily(raw, metaAds.pickResults)) {
+          const b = byDay[r.fecha] || (byDay[r.fecha] = { fecha: r.fecha, metaGasto: 0, metaImpresiones: 0, metaClics: 0, metaResultados: 0 });
+          b.metaGasto += r.metaGasto; b.metaImpresiones += r.metaImpresiones; b.metaClics += r.metaClics; b.metaResultados += r.metaResultados;
+        }
+        got++;
+      } catch (e) { failed++; console.error('[hist] backfill Meta', chunk.since, acc.id, metaAds._toUserError(e).message); }
+    }
+  }
+  const rows = Object.values(byDay).map((b) => ({ fecha: b.fecha, metaGasto: history.round2(b.metaGasto), metaImpresiones: Math.round(b.metaImpresiones), metaClics: Math.round(b.metaClics), metaResultados: Math.round(b.metaResultados) }));
+  const up = rows.length ? historyStore.upsert(rows) : { ok: true };
+  return { ok: got > 0, saved: up.ok, source: 'meta', since, until, days: rows.length, requests: got, failed };
+}
+
+// Backfill de Google: getDailyBetween por tramos mensuales (una respuesta por mes).
+async function backfillGoogleHistory(months) {
+  const c = gadsCreds();
+  if (!c.refreshToken || !c.customerId) return { ok: false, source: 'google', error: 'Google Ads no está conectado.' };
+  const now = new Date();
+  const until = history.ymdLocal(now);
+  const since = history.ymdLocal(new Date(now.getFullYear(), now.getMonth() - (months - 1), 1));
+  let at;
+  try { at = await googleAds.refreshAccessToken(c); } catch (e) { return { ok: false, source: 'google', error: googleAds._toUserError(e).message }; }
+  const chunks = history.monthChunks(since, until);
+  const rows = [];
+  let got = 0, failed = 0;
+  for (const chunk of chunks) {
+    try {
+      const daily = await googleAds.getDailyBetween(at, c.customerId, chunk.since, chunk.until);
+      rows.push(...history.googleDailyToRows(daily));
+      got++;
+    } catch (e) { failed++; console.error('[hist] backfill Google', chunk.since, googleAds._toUserError(e).message); }
+  }
+  const up = rows.length ? historyStore.upsert(rows) : { ok: true };
+  return { ok: got > 0, saved: up.ok, source: 'google', since, until, days: rows.length, requests: got, failed };
+}
+
+// Estado del historial (cobertura + qué fuentes están conectadas).
+ipcMain.handle('hist:status', () => {
+  const g = gadsCreds();
+  return { ok: true, ...historyStore.coverage(), filePath: historyStore.dataFile, metaConnected: adsConnected(), gadsConnected: !!(g.refreshToken && g.customerId) };
+});
+
+// Actualización incremental y rápida (sin backfill): Meta desde el store, Google en vivo 30d, consultas hoy/ayer.
+ipcMain.handle('hist:update', async () => {
+  const res = { ok: true, meta: false, google: false, consultas: false };
+  let saved = true;
+  try { const up = historyStore.upsert(history.metaDaysToRows((adsStore.read() || {}).days || {})); if (!up.ok) saved = false; res.meta = true; } catch (e) { console.error('[hist] update Meta', e && e.message); }
+  try {
+    const c = gadsCreds();
+    if (c.refreshToken && c.customerId) {
+      const at = await googleAds.refreshAccessToken(c);
+      const up = historyStore.upsert(history.googleDailyToRows(await googleAds.getDailyTotals(at, c.customerId)));
+      if (!up.ok) saved = false;
+      res.google = true;
+    }
+  } catch (e) { console.error('[hist] update Google', e && e.message); }
+  try { const funnel = await consultas.fetchFunnel(); if (snapshotConsultasHistory(funnel) === false) saved = false; res.consultas = !!(funnel && funnel.ok); } catch (e) { console.error('[hist] update consultas', e && e.message); }
+  return { ...res, saved, coverage: historyStore.coverage() };
+});
+
+// Reconstrucción profunda: backfill de Meta y Google por N meses (default 24; Meta retiene ~37).
+ipcMain.handle('hist:rebuild', async (_e, payload) => {
+  let months = Math.round(Number((payload || {}).months) || 24);
+  if (months < 1) months = 1;
+  if (months > 37) months = 37;
+  const meta = await backfillMetaHistory(months);
+  const google = await backfillGoogleHistory(months);
+  let consultasOk = false, consultasSaved = true;
+  try { const funnel = await consultas.fetchFunnel(); if (snapshotConsultasHistory(funnel) === false) consultasSaved = false; consultasOk = !!(funnel && funnel.ok); } catch (_) {}
+  const saved = (meta.saved !== false) && (google.saved !== false) && consultasSaved;
+  return { ok: true, months, meta, google, consultas: consultasOk, saved, coverage: historyStore.coverage() };
+});
+
+// Comparativa período vs período anterior + series para el gráfico.
+ipcMain.handle('hist:getComparison', (_e, payload) => {
+  try {
+    const p = payload || {};
+    const type = String(p.period || 'mes');
+    if (!history.PERIOD_TYPES.includes(type)) return { ok: false, error: 'Período inválido.' };
+    if (type === 'custom') {
+      const re = /^\d{4}-\d{2}-\d{2}$/;
+      if (!re.test(p.from || '') || !re.test(p.to || '')) return { ok: false, error: 'Elegí las fechas desde y hasta.' };
+    }
+    const today = history.ymdLocal(new Date());
+    const rows = historyStore.read();
+    const cmp = history.buildComparison(rows, type, today, p.from, p.to);
+    return { ok: true, today, coverage: history.coverage(rows), ...cmp };
+  } catch (e) {
+    return { ok: false, error: String((e && e.message) || e) };
+  }
+});
+
+// Abre la hoja de cálculo (.csv) en la app de planillas por defecto (Excel / Google Sheets).
+ipcMain.handle('hist:open', async () => {
+  try {
+    const { shell } = require('electron');
+    const file = historyStore.ensureFile();
+    const err = await shell.openPath(file);
+    if (err) return { ok: false, error: err };
+    return { ok: true, filePath: file };
+  } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
 });
 
 // ----------------------------------------------------------------------------
@@ -2170,6 +2732,24 @@ app.whenReady().then(() => {
     powerMonitor.on('resume', () => { setTimeout(() => pollAds().catch(() => {}), 20 * 1000); });
   } catch (_) {}
 
+  // Pausas programadas: primer chequeo a los 15 s y luego cada 30 s (requiere la app abierta).
+  setTimeout(() => { checkAdsSchedules().catch(() => {}); }, 15 * 1000);
+  setInterval(() => { checkAdsSchedules().catch(() => {}); }, 30 * 1000);
+
+  // Historial: vuelca Google + consultas al archivo cada 3 h (Meta ya se vuelca dentro de pollAds).
+  const historyFlush = async () => {
+    try {
+      const g = gadsCreds();
+      if (g.refreshToken && g.customerId) {
+        const at = await googleAds.refreshAccessToken(g);
+        historyStore.upsert(history.googleDailyToRows(await googleAds.getDailyTotals(at, g.customerId)));
+      }
+    } catch (_) {}
+    try { snapshotConsultasHistory(await consultas.fetchFunnel()); } catch (_) {}
+  };
+  setTimeout(() => { historyFlush(); }, 30 * 1000);
+  setInterval(() => { historyFlush(); }, 3 * 60 * 60 * 1000);
+
   // Actualizaciones automáticas (solo en la app instalada)
   setupAutoUpdate();
 
@@ -2184,3 +2764,14 @@ app.on('before-quit', () => { isQuitting = true; });
 app.on('window-all-closed', (e) => {
   // En Windows mantenemos el proceso vivo gracias a la bandeja.
 });
+
+// Seam SOLO para pruebas automatizadas (guardado por variable de entorno; Electron nunca la setea,
+// y module.exports no tiene efecto sobre el proceso principal real). Permite testear la lógica de
+// pausas programadas sin pausar campañas en vivo.
+if (process.env.ADS_TEST_HOOKS) {
+  module.exports = {
+    checkAdsSchedules, runScheduledOccurrence, pauseScheduleTargets, consumeOccurrence,
+    adsOccurrenceDue, buildAdsOverview, persistPollResult, parseLocalDateTime,
+    ADS_SCHED_RETRY_WINDOW_MS, ADS_SCHED_RETRY_INTERVAL_MS,
+  };
+}
