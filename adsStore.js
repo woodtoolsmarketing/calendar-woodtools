@@ -21,6 +21,10 @@ function normalize(data) {
   return {
     account: d.account && typeof d.account === 'object' ? d.account : null,
     accounts: Array.isArray(d.accounts) ? d.accounts : [],
+    // Mapa cuenta->conexión (accountId -> connKey) para resolver el token correcto por cuenta
+    // (WoodTools vs Shark). DEBE preservarse: si se pierde, activar/pausar/promocionar una campaña
+    // de Shark cae al token de WoodTools y Meta tira "Object ... missing permissions".
+    accountConn: d.accountConn && typeof d.accountConn === 'object' ? d.accountConn : {},
     lastSyncAt: Number(d.lastSyncAt) || null,
     lastError: typeof d.lastError === 'string' ? d.lastError : null,
     days: d.days && typeof d.days === 'object' ? d.days : {},
